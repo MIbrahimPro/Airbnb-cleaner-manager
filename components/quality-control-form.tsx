@@ -4,15 +4,17 @@ import {
   Camera,
   Check,
   CheckCircle2,
-  ChevronDown,
   CircleAlert,
   Clock3,
   Home,
+  KeyRound,
+  LogIn,
+  LogOut,
   Loader2,
   Search,
-  Sparkles,
   Trash2,
   Upload,
+  UserCheck,
   UserRound,
   X,
 } from "lucide-react";
@@ -75,6 +77,11 @@ type PhotoPreview = {
   url: string;
 };
 
+type CleanerSession = {
+  cleaner: string;
+  signedInAt: string;
+};
+
 function getLocalDateTimeValue() {
   const now = new Date();
   const offset = now.getTimezoneOffset();
@@ -82,9 +89,24 @@ function getLocalDateTimeValue() {
   return local.toISOString().slice(0, 16);
 }
 
+function sanitizeCleanerName(value: string) {
+  return value
+    .replace(/[^\p{L}\p{N}\s'-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sanitizePassword(value: string) {
+  return value.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 128);
+}
+
+function normalizeCleanerName(value: string) {
+  return sanitizeCleanerName(value).toLocaleLowerCase();
+}
+
 export function QualityControlForm() {
+  const [session, setSession] = useState<CleanerSession | null>(null);
   const [property, setProperty] = useState(properties[0]);
-  const [cleaner, setCleaner] = useState(cleaners[0]);
   const [scheduledAt, setScheduledAt] = useState("");
   const [cleanType, setCleanType] = useState<CleanType>("Standard Changeover");
   const [notes, setNotes] = useState("");
@@ -114,7 +136,7 @@ export function QualityControlForm() {
     textAreaRef.current.style.height = `${Math.max(textAreaRef.current.scrollHeight, 116)}px`;
   }, [notes]);
 
-  const canSubmit = property && cleaner && scheduledAt && !isSubmitting;
+  const canSubmit = property && session?.cleaner && scheduledAt && !isSubmitting;
 
   function addFiles(fileList: FileList | null) {
     if (!fileList) {
@@ -157,6 +179,10 @@ export function QualityControlForm() {
     }, 1100);
   }
 
+  if (!session) {
+    return <LoginScreen onLogin={setSession} />;
+  }
+
   return (
     <main className="min-h-[100dvh] bg-[#f2f2f7] text-[#1c1c1e]">
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] flex-col px-4 pb-28 pt-4 sm:px-6 sm:pt-8">
@@ -167,17 +193,23 @@ export function QualityControlForm() {
               <h1 className="mt-1 text-[34px] font-semibold leading-none tracking-[-0.022em] text-[#1d1d1f] sm:text-[42px]">
                 Inspection
               </h1>
+              <p className="mt-2 text-[15px] leading-5 text-[#6e6e73]">Signed in as {session.cleaner}</p>
             </div>
-            <div className="flex h-11 min-w-11 items-center justify-center rounded-[12px] border border-black/[0.06] bg-white text-[#007aff] shadow-[0_1px_1px_rgba(0,0,0,0.03)]">
-              <Sparkles aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
-            </div>
+            <button
+              type="button"
+              aria-label="Sign out"
+              onClick={() => setSession(null)}
+              className="flex h-11 min-w-11 items-center justify-center rounded-[12px] border border-black/[0.06] bg-white text-[#007aff] shadow-[0_1px_1px_rgba(0,0,0,0.03)] transition hover:bg-[#f9f9fb] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10 active:scale-[0.97]"
+            >
+              <LogOut aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+            </button>
           </div>
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-7">
           <SettingsSection
             title="Property"
-            footer="Choose the property and cleaner before starting the quality-control submission."
+            footer="Cleaner identity is set from the signed-in account."
           >
             <SearchableSelect
               label="Property"
@@ -189,27 +221,9 @@ export function QualityControlForm() {
             <RowDivider />
             <SettingsRow
               label="Cleaner"
-              icon={<UserRound aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
+              icon={<UserCheck aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
             >
-              <div className="relative min-w-0 flex-1">
-                <select
-                  aria-label="Cleaner"
-                  value={cleaner}
-                  onChange={(event) => setCleaner(event.target.value)}
-                  className="h-11 w-full appearance-none bg-transparent pl-2 pr-7 text-right text-[16px] font-normal text-[#007aff] outline-none"
-                >
-                  {cleaners.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8e8e93]"
-                  strokeWidth={2}
-                />
-              </div>
+              <p className="min-w-0 truncate text-right text-[16px] font-normal text-[#007aff]">{session.cleaner}</p>
             </SettingsRow>
           </SettingsSection>
 
@@ -345,7 +359,7 @@ export function QualityControlForm() {
               </>
             ) : (
               <>
-                <Sparkles aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+                <CheckCircle2 aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
                 Submit Inspection
               </>
             )}
@@ -376,6 +390,116 @@ export function QualityControlForm() {
           </div>
         </div>
       ) : null}
+    </main>
+  );
+}
+
+function LoginScreen({ onLogin }: { onLogin: (session: CleanerSession) => void }) {
+  const [cleanerInput, setCleanerInput] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const sanitizedCleaner = sanitizeCleanerName(cleanerInput);
+    const sanitizedPassword = sanitizePassword(password);
+    const matchedCleaner = cleaners.find((cleaner) => normalizeCleanerName(cleaner) === normalizeCleanerName(sanitizedCleaner));
+
+    if (!sanitizedCleaner) {
+      setError("Enter your name.");
+      return;
+    }
+
+    if (!sanitizedPassword) {
+      setError("Enter your password.");
+      return;
+    }
+
+    setError("");
+    setIsSigningIn(true);
+
+    window.setTimeout(() => {
+      onLogin({
+        cleaner: matchedCleaner ?? sanitizedCleaner,
+        signedInAt: getLocalDateTimeValue(),
+      });
+    }, 450);
+  }
+
+  return (
+    <main className="min-h-[100dvh] bg-[#f2f2f7] text-[#1c1c1e]">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] flex-col justify-center px-4 py-8 sm:px-6">
+        <header className="mb-7">
+          <p className="text-[13px] font-medium leading-5 text-[#6e6e73]">AI Cleaner QC</p>
+          <h1 className="mt-1 text-[36px] font-semibold leading-none tracking-[-0.024em] text-[#1d1d1f]">
+            Sign in
+          </h1>
+          <p className="mt-3 text-[16px] leading-6 text-[#6e6e73]">
+            Use your cleaner account to start an inspection.
+          </p>
+        </header>
+
+        <form onSubmit={handleLogin} className="space-y-7">
+          <SettingsSection title="Cleaner Access">
+            <SettingsRow
+              label="Name"
+              icon={<UserRound aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
+            >
+              <input
+                aria-label="Cleaner name"
+                value={cleanerInput}
+                onChange={(event) => {
+                  setCleanerInput(sanitizeCleanerName(event.target.value));
+                  setError("");
+                }}
+                placeholder="Aneeq"
+                autoComplete="name"
+                className="h-11 min-w-0 flex-1 bg-transparent text-right text-[16px] font-normal text-[#007aff] outline-none placeholder:text-[#8e8e93]"
+              />
+            </SettingsRow>
+            <RowDivider />
+            <SettingsRow
+              label="Password"
+              icon={<KeyRound aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
+            >
+              <input
+                aria-label="Password"
+                type="password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(sanitizePassword(event.target.value));
+                  setError("");
+                }}
+                placeholder="Password"
+                autoComplete="current-password"
+                className="h-11 min-w-0 flex-1 bg-transparent text-right text-[16px] font-normal text-[#007aff] outline-none placeholder:text-[#8e8e93]"
+              />
+            </SettingsRow>
+          </SettingsSection>
+
+          {error ? <p className="px-4 text-[14px] leading-5 text-[#ff3b30]">{error}</p> : null}
+
+          <button
+            type="submit"
+            disabled={isSigningIn}
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[14px] bg-[#007aff] px-5 text-[17px] font-semibold text-white shadow-[0_10px_24px_-18px_rgba(0,122,255,0.9)] transition hover:bg-[#006ee6] focus:outline-none focus:ring-4 focus:ring-[#007aff]/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#c7c7cc] disabled:shadow-none"
+          >
+            {isSigningIn ? (
+              <>
+                <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2} />
+                Signing in
+              </>
+            ) : (
+              <>
+                <LogIn aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+                Continue
+              </>
+            )}
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
