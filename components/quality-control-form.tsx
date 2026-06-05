@@ -1,17 +1,18 @@
 "use client";
 
 import {
-  CalendarClock,
   Camera,
   Check,
   CheckCircle2,
   ChevronDown,
-  ClipboardCheck,
+  CircleAlert,
+  Clock3,
+  Home,
   Loader2,
   Search,
   Sparkles,
   Trash2,
-  UploadCloud,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import {
   ChangeEvent,
   FormEvent,
   KeyboardEvent,
+  ReactNode,
   useEffect,
   useMemo,
   useRef,
@@ -61,6 +63,12 @@ const cleanTypes = ["Standard Changeover", "Deep Clean", "Owner Stay"] as const;
 
 type CleanType = (typeof cleanTypes)[number];
 
+const cleanTypeLabels: Record<CleanType, string> = {
+  "Standard Changeover": "Standard",
+  "Deep Clean": "Deep",
+  "Owner Stay": "Owner",
+};
+
 type PhotoPreview = {
   id: string;
   file: File;
@@ -77,7 +85,7 @@ function getLocalDateTimeValue() {
 export function QualityControlForm() {
   const [property, setProperty] = useState(properties[0]);
   const [cleaner, setCleaner] = useState(cleaners[0]);
-  const [scheduledAt, setScheduledAt] = useState(getLocalDateTimeValue);
+  const [scheduledAt, setScheduledAt] = useState("");
   const [cleanType, setCleanType] = useState<CleanType>("Standard Changeover");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
@@ -85,6 +93,11 @@ export function QualityControlForm() {
   const [showFeedback, setShowFeedback] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setScheduledAt(getLocalDateTimeValue());
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -98,7 +111,7 @@ export function QualityControlForm() {
     }
 
     textAreaRef.current.style.height = "0px";
-    textAreaRef.current.style.height = `${textAreaRef.current.scrollHeight}px`;
+    textAreaRef.current.style.height = `${Math.max(textAreaRef.current.scrollHeight, 116)}px`;
   }, [notes]);
 
   const canSubmit = property && cleaner && scheduledAt && !isSubmitting;
@@ -141,238 +154,224 @@ export function QualityControlForm() {
     window.setTimeout(() => {
       setIsSubmitting(false);
       setShowFeedback(true);
-    }, 1200);
+    }, 1100);
   }
 
   return (
-    <main className="min-h-[100dvh] px-4 py-5 text-ink sm:px-6 sm:py-8">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 lg:grid lg:grid-cols-[0.82fr_1.18fr] lg:gap-8">
-        <aside className="lg:sticky lg:top-8 lg:h-fit">
-          <div className="rounded-[32px] border border-white/70 bg-white/65 p-6 shadow-apple-soft backdrop-blur-2xl sm:p-8">
-            <div className="mb-8 flex h-[52px] w-[52px] items-center justify-center rounded-2xl border border-neutral-200/80 bg-white shadow-[0_10px_24px_-18px_rgba(29,29,31,0.4)]">
-              <ClipboardCheck aria-hidden="true" className="h-6 w-6 text-neutral-900" strokeWidth={1.8} />
+    <main className="min-h-[100dvh] bg-[#f2f2f7] text-[#1c1c1e]">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] flex-col px-4 pb-28 pt-4 sm:px-6 sm:pt-8">
+        <header className="mb-5 border-b border-black/[0.06] pb-4 sm:mb-7">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[13px] font-medium leading-5 text-[#6e6e73]">AI Cleaner QC</p>
+              <h1 className="mt-1 text-[34px] font-semibold leading-none tracking-[-0.022em] text-[#1d1d1f] sm:text-[42px]">
+                Inspection
+              </h1>
             </div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
-              AI quality control
-            </p>
-            <h1 className="text-[clamp(2.25rem,9vw,4.65rem)] font-semibold leading-[0.96] tracking-[-0.035em] text-neutral-950">
-              Cleaner inspection.
-            </h1>
-            <p className="mt-5 max-w-sm text-base leading-7 text-neutral-600">
-              Submit the property, cleaner, clean type, notes, and on-site photos from a phone-friendly workflow.
-            </p>
-            <div className="mt-8 grid grid-cols-2 gap-3">
-              <StatusPill label="Photos" value={`${photos.length}`} />
-              <StatusPill label="Clean" value={cleanType.replace("Standard ", "")} />
+            <div className="flex h-11 min-w-11 items-center justify-center rounded-[12px] border border-black/[0.06] bg-white text-[#007aff] shadow-[0_1px_1px_rgba(0,0,0,0.03)]">
+              <Sparkles aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
             </div>
           </div>
-        </aside>
+        </header>
 
-        <section className="rounded-[34px] border border-white/70 bg-white/80 p-4 shadow-apple-soft backdrop-blur-2xl sm:p-6">
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            <div className="rounded-[28px] border border-neutral-100 bg-neutral-50/80 p-4 sm:p-5">
-              <div className="grid gap-5 md:grid-cols-2">
-                <SearchableSelect
-                  label="Property"
-                  value={property}
-                  options={properties}
-                  onChange={setProperty}
-                  icon={<Search aria-hidden="true" className="h-4 w-4" strokeWidth={1.8} />}
-                />
-                <Field label="Cleaner" helper="Assigned cleaner completing this inspection.">
-                  <div className="relative">
-                    <UserRound
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500"
-                      strokeWidth={1.8}
-                    />
-                    <select
-                      aria-label="Cleaner"
-                      value={cleaner}
-                      onChange={(event) => setCleaner(event.target.value)}
-                      className="h-[52px] w-full appearance-none rounded-2xl border border-neutral-200 bg-white px-11 pr-10 text-[15px] font-medium text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none transition focus:border-neutral-400 focus:ring-4 focus:ring-neutral-950/5"
-                    >
-                      {cleaners.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      aria-hidden="true"
-                      className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500"
-                      strokeWidth={1.8}
-                    />
-                  </div>
-                </Field>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-neutral-100 bg-white p-4 sm:p-5">
-              <div className="grid gap-5 md:grid-cols-[0.9fr_1.1fr]">
-                <Field label="Date and time" helper="Pre-filled to the current local time.">
-                  <div className="relative">
-                    <CalendarClock
-                      aria-hidden="true"
-                      className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500"
-                      strokeWidth={1.8}
-                    />
-                    <input
-                      aria-label="Date and time"
-                      suppressHydrationWarning
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(event) => setScheduledAt(event.target.value)}
-                      className="h-[52px] w-full rounded-2xl border border-neutral-200 bg-neutral-50 px-11 text-[15px] font-medium text-neutral-950 outline-none transition focus:border-neutral-400 focus:bg-white focus:ring-4 focus:ring-neutral-950/5"
-                    />
-                  </div>
-                </Field>
-
-                <Field label="Type of clean" helper="Choose the inspection context.">
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {cleanTypes.map((type) => {
-                      const isSelected = cleanType === type;
-                      return (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setCleanType(type)}
-                          className={`min-h-[52px] rounded-2xl border px-3 py-3 text-left text-sm font-semibold transition active:scale-[0.98] ${
-                            isSelected
-                              ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_16px_36px_-24px_rgba(29,29,31,0.8)]"
-                              : "border-neutral-200 bg-neutral-50 text-neutral-700 hover:border-neutral-300 hover:bg-white"
-                          }`}
-                        >
-                          <span className="flex items-center justify-between gap-2">
-                            {type}
-                            {isSelected ? <Check aria-hidden="true" className="h-4 w-4" strokeWidth={2} /> : null}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </Field>
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-neutral-100 bg-white p-4 sm:p-5">
-              <Field label="Notes and issues" helper="Capture anything the AI should consider while reviewing photos.">
-                <textarea
-                  aria-label="Notes and issues"
-                  ref={textAreaRef}
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={3}
-                  placeholder="Add linen issues, maintenance notes, missing supplies, or access details."
-                  className="max-h-64 min-h-[132px] w-full resize-none overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-4 text-[15px] leading-6 text-neutral-950 outline-none transition placeholder:text-neutral-400 focus:border-neutral-400 focus:bg-white focus:ring-4 focus:ring-neutral-950/5"
-                />
-              </Field>
-            </div>
-
-            <div className="rounded-[28px] border border-neutral-100 bg-white p-4 sm:p-5">
-              <Field label="Inspection photos" helper="Tap to open the camera or choose multiple images from the device.">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  multiple
-                  className="sr-only"
-                  onChange={(event) => {
-                    addFiles(event.target.files);
-                    event.target.value = "";
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    addFiles(event.dataTransfer.files);
-                  }}
-                  className="group flex min-h-[164px] w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-neutral-300 bg-neutral-50 px-5 py-7 text-center transition hover:border-neutral-400 hover:bg-white focus:outline-none focus:ring-4 focus:ring-neutral-950/5 active:scale-[0.99]"
-                >
-                  <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-neutral-200 bg-white shadow-[0_14px_34px_-24px_rgba(29,29,31,0.75)] transition group-hover:-translate-y-0.5">
-                    <Camera aria-hidden="true" className="h-6 w-6 text-neutral-900" strokeWidth={1.8} />
-                  </span>
-                  <span className="text-base font-semibold text-neutral-950">Add inspection photos</span>
-                  <span className="mt-1 max-w-xs text-sm leading-6 text-neutral-500">
-                    Camera capture, multi-select, drag and drop, with instant previews below.
-                  </span>
-                  <span className="mt-4 inline-flex h-10 items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 text-sm font-semibold text-neutral-800">
-                    <UploadCloud aria-hidden="true" className="h-4 w-4" strokeWidth={1.8} />
-                    Choose photos
-                  </span>
-                </button>
-
-                {photos.length > 0 ? (
-                  <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {photos.map((photo) => (
-                      <figure
-                        key={photo.id}
-                        className="group relative aspect-[4/5] overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={photo.url} alt={photo.file.name} className="h-full w-full object-cover" />
-                        <figcaption className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-neutral-950/70 to-transparent px-3 pb-3 pt-10 text-xs font-medium text-white">
-                          {photo.file.name}
-                        </figcaption>
-                        <button
-                          type="button"
-                          aria-label={`Remove ${photo.file.name}`}
-                          onClick={() => removePhoto(photo.id)}
-                          className="absolute right-2 top-2 flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/90 text-neutral-900 shadow-sm backdrop-blur-md transition hover:bg-white focus:outline-none focus:ring-4 focus:ring-white/70 active:scale-95"
-                        >
-                          <Trash2 aria-hidden="true" className="h-4 w-4" strokeWidth={1.9} />
-                        </button>
-                      </figure>
-                    ))}
-                  </div>
-                ) : null}
-              </Field>
-            </div>
-
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="group flex min-h-14 items-center justify-center gap-3 rounded-full bg-neutral-950 px-6 py-4 text-base font-semibold text-white shadow-[0_22px_44px_-26px_rgba(29,29,31,0.88)] transition hover:-translate-y-0.5 hover:bg-neutral-800 focus:outline-none focus:ring-4 focus:ring-neutral-950/15 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 disabled:shadow-none"
+        <form onSubmit={handleSubmit} className="space-y-7">
+          <SettingsSection
+            title="Property"
+            footer="Choose the property and cleaner before starting the quality-control submission."
+          >
+            <SearchableSelect
+              label="Property"
+              value={property}
+              options={properties}
+              onChange={setProperty}
+              icon={<Home aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
+            />
+            <RowDivider />
+            <SettingsRow
+              label="Cleaner"
+              icon={<UserRound aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={1.9} />
-                  Reviewing inspection
-                </>
-              ) : (
-                <>
-                  <Sparkles aria-hidden="true" className="h-5 w-5 transition group-hover:rotate-6" strokeWidth={1.9} />
-                  Submit Inspection
-                </>
-              )}
-            </button>
-          </form>
-        </section>
+              <div className="relative min-w-0 flex-1">
+                <select
+                  aria-label="Cleaner"
+                  value={cleaner}
+                  onChange={(event) => setCleaner(event.target.value)}
+                  className="h-11 w-full appearance-none bg-transparent pl-2 pr-7 text-right text-[16px] font-normal text-[#007aff] outline-none"
+                >
+                  {cleaners.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown
+                  aria-hidden="true"
+                  className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8e8e93]"
+                  strokeWidth={2}
+                />
+              </div>
+            </SettingsRow>
+          </SettingsSection>
+
+          <SettingsSection title="Clean Configuration">
+            <SettingsRow
+              label="Date & Time"
+              icon={<Clock3 aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
+            >
+              <input
+                aria-label="Date and time"
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                className="h-11 min-w-0 flex-1 bg-transparent text-right text-[15px] font-normal text-[#007aff] outline-none [color-scheme:light]"
+              />
+            </SettingsRow>
+            <RowDivider />
+            <div className="px-4 py-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="text-[16px] font-normal text-[#1c1c1e]">Type of Clean</span>
+                <span className="text-[13px] text-[#8e8e93]">{cleanType}</span>
+              </div>
+              <div className="grid grid-cols-3 rounded-[10px] bg-[#e5e5ea] p-0.5 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.03)]">
+                {cleanTypes.map((type) => {
+                  const isSelected = cleanType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setCleanType(type)}
+                      className={`min-h-9 rounded-[8px] px-2 text-[13px] font-medium leading-none tracking-[-0.01em] transition active:scale-[0.98] ${
+                        isSelected
+                          ? "bg-white text-[#1c1c1e] shadow-[0_1px_3px_rgba(0,0,0,0.14)]"
+                          : "text-[#3a3a3c] hover:text-[#1c1c1e]"
+                      }`}
+                    >
+                      <span className="block truncate sm:hidden">{cleanTypeLabels[type]}</span>
+                      <span className="hidden truncate sm:block">{type}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Report"
+            footer="Notes and images stay local in this mock flow. The submit action simulates AI feedback."
+          >
+            <div className="px-4 py-3">
+              <label className="mb-2 block text-[16px] font-normal text-[#1c1c1e]" htmlFor="notes">
+                Notes / Issues
+              </label>
+              <textarea
+                id="notes"
+                ref={textAreaRef}
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={4}
+                placeholder="Linen issue, maintenance note, missing supplies..."
+                className="max-h-64 min-h-[116px] w-full resize-none overflow-hidden rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 py-3 text-[16px] leading-6 text-[#1c1c1e] outline-none transition placeholder:text-[#8e8e93] focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
+              />
+            </div>
+            <RowDivider />
+            <div className="px-4 py-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  addFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  addFiles(event.dataTransfer.files);
+                }}
+                className="flex min-h-[72px] w-full items-center gap-3 rounded-[12px] border border-dashed border-black/[0.14] bg-[#f9f9fb] px-3 py-3 text-left transition hover:bg-white focus:outline-none focus:ring-4 focus:ring-[#007aff]/10 active:scale-[0.99]"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#007aff] text-white">
+                  <Camera aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[16px] font-medium text-[#1c1c1e]">Add Photos</span>
+                  <span className="mt-0.5 block text-[13px] leading-5 text-[#6e6e73]">
+                    Camera capture or multi-select from library.
+                  </span>
+                </span>
+                <Upload aria-hidden="true" className="h-5 w-5 shrink-0 text-[#8e8e93]" strokeWidth={2} />
+              </button>
+
+              {photos.length > 0 ? (
+                <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {photos.map((photo) => (
+                    <figure
+                      key={photo.id}
+                      className="group relative aspect-square overflow-hidden rounded-[10px] border border-black/[0.06] bg-[#e5e5ea]"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={photo.url} alt={photo.file.name} className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        aria-label={`Remove ${photo.file.name}`}
+                        onClick={() => removePhoto(photo.id)}
+                        className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-md transition hover:bg-black/70 focus:outline-none focus:ring-4 focus:ring-white/70 active:scale-95"
+                      >
+                        <Trash2 aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
+                      </button>
+                    </figure>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </SettingsSection>
+
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[14px] bg-[#007aff] px-5 text-[17px] font-semibold text-white shadow-[0_10px_24px_-18px_rgba(0,122,255,0.9)] transition hover:bg-[#006ee6] focus:outline-none focus:ring-4 focus:ring-[#007aff]/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-[#c7c7cc] disabled:shadow-none"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2} />
+                Reviewing
+              </>
+            ) : (
+              <>
+                <Sparkles aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+                Submit Inspection
+              </>
+            )}
+          </button>
+        </form>
       </div>
 
       {showFeedback ? (
-        <div className="fixed inset-x-4 bottom-4 mx-auto max-w-md rounded-[28px] border border-white/70 bg-white/90 p-4 shadow-[0_28px_80px_-32px_rgba(15,23,42,0.55)] backdrop-blur-2xl sm:bottom-6">
+        <div className="fixed inset-x-3 bottom-4 mx-auto max-w-[520px] rounded-[18px] border border-black/[0.06] bg-white/95 p-4 shadow-[0_18px_48px_-22px_rgba(0,0,0,0.42)] backdrop-blur-xl">
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">
-              <CheckCircle2 aria-hidden="true" className="h-6 w-6" strokeWidth={1.8} />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-[#34c759]/10 text-[#248a3d]">
+              <CheckCircle2 aria-hidden="true" className="h-6 w-6" strokeWidth={2} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-neutral-950">Inspection submitted</p>
-              <p className="mt-1 text-sm leading-6 text-neutral-600">
-                Mock AI feedback: photos are ready for quality review. No urgent blockers detected from this submission.
+              <p className="text-[15px] font-semibold text-[#1c1c1e]">Inspection submitted</p>
+              <p className="mt-1 text-[13px] leading-5 text-[#6e6e73]">
+                Mock AI feedback: photos are ready for review. No urgent blockers detected.
               </p>
             </div>
             <button
               type="button"
               aria-label="Dismiss feedback"
               onClick={() => setShowFeedback(false)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 focus:outline-none focus:ring-4 focus:ring-neutral-950/5"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#8e8e93] transition hover:bg-[#f2f2f7] hover:text-[#1c1c1e] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10"
             >
-              <X aria-hidden="true" className="h-4 w-4" strokeWidth={1.9} />
+              <X aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
             </button>
           </div>
         </div>
@@ -381,31 +380,48 @@ export function QualityControlForm() {
   );
 }
 
-function Field({
+function SettingsSection({
+  title,
+  footer,
+  children,
+}: {
+  title: string;
+  footer?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section>
+      <h2 className="mb-2 px-4 text-[13px] font-medium uppercase tracking-normal text-[#6e6e73]">{title}</h2>
+      <div className="overflow-visible rounded-[14px] border border-black/[0.06] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+        {children}
+      </div>
+      {footer ? <p className="mt-2 px-4 text-[13px] leading-5 text-[#6e6e73]">{footer}</p> : null}
+    </section>
+  );
+}
+
+function SettingsRow({
   label,
-  helper,
+  icon,
   children,
 }: {
   label: string;
-  helper: string;
-  children: React.ReactNode;
+  icon: ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-sm font-semibold text-neutral-950">{label}</span>
-      <span className="text-xs leading-5 text-neutral-500">{helper}</span>
-      {children}
+    <div className="flex min-h-[52px] items-center gap-3 px-4 py-1.5">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#f2f2f7] text-[#007aff]">
+        {icon}
+      </span>
+      <span className="shrink-0 text-[16px] font-normal text-[#1c1c1e]">{label}</span>
+      <div className="ml-auto flex min-w-0 flex-1 items-center justify-end">{children}</div>
     </div>
   );
 }
 
-function StatusPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-neutral-200/70 bg-white/70 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-neutral-950">{value}</p>
-    </div>
-  );
+function RowDivider() {
+  return <div className="ml-[64px] h-px bg-black/[0.08]" />;
 }
 
 function SearchableSelect({
@@ -419,7 +435,7 @@ function SearchableSelect({
   value: string;
   options: string[];
   onChange: (value: string) => void;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -465,9 +481,15 @@ function SearchableSelect({
 
   return (
     <div ref={rootRef} className="relative">
-      <Field label={label} helper="Search or select the property being inspected.">
-        <div className="relative">
-          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500">{icon}</span>
+      <SettingsRow label={label} icon={icon}>
+        <div className="relative min-w-0 flex-1">
+          <Search
+            aria-hidden="true"
+            className={`pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8e8e93] transition ${
+              open ? "opacity-100" : "opacity-0"
+            }`}
+            strokeWidth={2}
+          />
           <input
             aria-label="Property"
             ref={inputRef}
@@ -485,26 +507,21 @@ function SearchableSelect({
             aria-controls="property-listbox"
             aria-autocomplete="list"
             role="combobox"
-            className="h-[52px] w-full rounded-2xl border border-neutral-200 bg-white px-11 pr-10 text-[15px] font-medium text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none transition placeholder:text-neutral-400 focus:border-neutral-400 focus:ring-4 focus:ring-neutral-950/5"
-          />
-          <ChevronDown
-            aria-hidden="true"
-            className={`pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500 transition ${
-              open ? "rotate-180" : ""
+            className={`h-11 w-full rounded-[10px] bg-transparent text-right text-[16px] font-normal text-[#007aff] outline-none transition placeholder:text-[#8e8e93] focus:bg-[#f9f9fb] focus:ring-4 focus:ring-[#007aff]/10 ${
+              open ? "pl-8 pr-3 text-left" : "px-0"
             }`}
-            strokeWidth={1.8}
           />
         </div>
-      </Field>
+      </SettingsRow>
 
       {open ? (
         <div
           id="property-listbox"
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 max-h-72 overflow-auto rounded-3xl border border-neutral-200 bg-white/95 p-2 shadow-[0_24px_60px_-34px_rgba(29,29,31,0.55)] backdrop-blur-xl"
+          className="absolute inset-x-2 top-[calc(100%+0.35rem)] z-20 max-h-72 overflow-auto rounded-[14px] border border-black/[0.08] bg-white/98 p-1.5 shadow-[0_18px_42px_-22px_rgba(0,0,0,0.42)] backdrop-blur-xl"
         >
           {filteredOptions.length > 0 ? (
-            filteredOptions.map((option) => {
+            filteredOptions.map((option, index) => {
               const isSelected = option === value;
               return (
                 <button
@@ -513,19 +530,18 @@ function SearchableSelect({
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => chooseOption(option)}
-                  className={`flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl px-3 py-2.5 text-left text-sm transition ${
-                    isSelected
-                      ? "bg-neutral-950 font-semibold text-white"
-                      : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950"
-                  }`}
+                  className="flex min-h-11 w-full items-center gap-3 rounded-[10px] px-3 text-left text-[15px] text-[#1c1c1e] transition hover:bg-[#f2f2f7] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10"
                 >
-                  <span>{option}</span>
-                  {isSelected ? <Check aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={2} /> : null}
+                  <span className="min-w-0 flex-1 truncate">{option}</span>
+                  {isSelected ? <Check aria-hidden="true" className="h-5 w-5 text-[#007aff]" strokeWidth={2} /> : null}
+                  {index === 0 && !isSelected && filteredOptions.length === 1 ? (
+                    <CircleAlert aria-hidden="true" className="h-4 w-4 text-[#8e8e93]" strokeWidth={2} />
+                  ) : null}
                 </button>
               );
             })
           ) : (
-            <p className="px-3 py-6 text-center text-sm text-neutral-500">No property matches that search.</p>
+            <p className="px-3 py-5 text-center text-[14px] text-[#6e6e73]">No property matches that search.</p>
           )}
         </div>
       ) : null}
