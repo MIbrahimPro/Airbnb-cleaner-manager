@@ -14,7 +14,6 @@ import {
   Search,
   Trash2,
   Upload,
-  UserCheck,
   UserRound,
   X,
 } from "lucide-react";
@@ -186,6 +185,26 @@ export function QualityControlForm() {
   return (
     <main className="min-h-[100dvh] bg-[#f2f2f7] text-[#1c1c1e]">
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[760px] flex-col px-4 pb-28 pt-4 sm:px-6 sm:pt-8">
+        <div className="mb-4 flex min-h-[52px] items-center justify-between gap-3 rounded-[14px] border border-black/[0.06] bg-white px-4 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#f2f2f7] text-[#007aff]">
+              <UserRound aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[12px] font-medium uppercase leading-4 text-[#8e8e93]">Cleaner</p>
+              <p className="truncate text-[16px] font-medium leading-5 text-[#1c1c1e]">{session.cleaner}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Sign out"
+            onClick={() => setSession(null)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#007aff] transition hover:bg-[#f2f2f7] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10 active:scale-[0.97]"
+          >
+            <LogOut aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+          </button>
+        </div>
+
         <header className="mb-5 border-b border-black/[0.06] pb-4 sm:mb-7">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -193,24 +212,12 @@ export function QualityControlForm() {
               <h1 className="mt-1 text-[34px] font-semibold leading-none tracking-[-0.022em] text-[#1d1d1f] sm:text-[42px]">
                 Inspection
               </h1>
-              <p className="mt-2 text-[15px] leading-5 text-[#6e6e73]">Signed in as {session.cleaner}</p>
             </div>
-            <button
-              type="button"
-              aria-label="Sign out"
-              onClick={() => setSession(null)}
-              className="flex h-11 min-w-11 items-center justify-center rounded-[12px] border border-black/[0.06] bg-white text-[#007aff] shadow-[0_1px_1px_rgba(0,0,0,0.03)] transition hover:bg-[#f9f9fb] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10 active:scale-[0.97]"
-            >
-              <LogOut aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
-            </button>
           </div>
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-7">
-          <SettingsSection
-            title="Property"
-            footer="Cleaner identity is set from the signed-in account."
-          >
+          <SettingsSection title="Property">
             <SearchableSelect
               label="Property"
               value={property}
@@ -218,13 +225,6 @@ export function QualityControlForm() {
               onChange={setProperty}
               icon={<Home aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
             />
-            <RowDivider />
-            <SettingsRow
-              label="Cleaner"
-              icon={<UserCheck aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
-            >
-              <p className="min-w-0 truncate text-right text-[16px] font-normal text-[#007aff]">{session.cleaner}</p>
-            </SettingsRow>
           </SettingsSection>
 
           <SettingsSection title="Clean Configuration">
