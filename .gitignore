@@ -5,6 +5,7 @@ dist/
 build/
 .agents/
 .codex/
+assets/
 
 .env
 .env*.local

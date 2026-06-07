@@ -1,0 +1,132 @@
+import mongoose from "mongoose";
+import { NextResponse } from "next/server";
+import aiClient, { aiConfig } from "@/lib/ai";
+import connectToDatabase from "@/lib/db";
+import CleanSession from "@/models/CleanSession";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type AppealStatus = "PASS" | "FAIL";
+
+function sanitizeText(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 2000) : fallback;
+}
+
+function parseAppealJson(content: string) {
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
+  const status: AppealStatus = parsed.status === "PASS" ? "PASS" : "FAIL";
+
+  return {
+    status,
+    feedback: typeof parsed.feedback === "string" ? parsed.feedback : "",
+  };
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const sessionId = sanitizeText(body.sessionId);
+    const taskName = sanitizeText(body.taskName);
+
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+      return NextResponse.json({ ok: false, error: "Invalid session id." }, { status: 400 });
+    }
+
+    if (!taskName) {
+      return NextResponse.json({ ok: false, error: "taskName is required." }, { status: 400 });
+    }
+
+    await connectToDatabase();
+
+    const session = await CleanSession.findById(sessionId);
+
+    if (!session) {
+      return NextResponse.json({ ok: false, error: "Session not found." }, { status: 404 });
+    }
+
+    const task = session.tasksCompleted.find((item: { taskName: string }) => item.taskName === taskName);
+
+    if (!task) {
+      return NextResponse.json({ ok: false, error: "Task not found in session." }, { status: 404 });
+    }
+
+    if (task.appealed) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "This task has already been appealed.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const completion = await aiClient.chat.completions.create({
+      model: aiConfig.appealModel,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a Senior QA Reviewer. Perform a rigorous second pass comparing the live image against the reference image. Be fair, but strict. Return ONLY a JSON object: { 'status': 'PASS' or 'FAIL', 'feedback': 'Specific reason if failed, empty if passed' }.",
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `Appeal review for task: ${taskName}. First image is the reference. Second image is the live cleaner submission.`,
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: task.referenceImageUrl,
+              },
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: task.liveImageUrl,
+              },
+            },
+          ],
+        },
+      ],
+      temperature: 0,
+    });
+
+    const content = completion.choices[0]?.message?.content;
+
+    if (!content) {
+      throw new Error("AI returned an empty appeal response.");
+    }
+
+    const result = parseAppealJson(content);
+    task.appealed = true;
+    task.status = result.status;
+    task.aiFeedback = result.feedback;
+
+    if (result.status === "FAIL") {
+      session.totalScore = Math.max(0, session.totalScore - 5);
+    }
+
+    await session.save();
+
+    return NextResponse.json({
+      ok: true,
+      model: aiConfig.appealModel,
+      result,
+      totalScore: session.totalScore,
+    });
+  } catch (error) {
+    console.error("Evaluate appeal route failed:", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Appeal evaluation failed.",
+      },
+      { status: 500 },
+    );
+  }
+}
+

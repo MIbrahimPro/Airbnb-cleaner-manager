@@ -1,0 +1,106 @@
+import { createHash } from "node:crypto";
+import { NextResponse } from "next/server";
+import cloudinary from "@/lib/cloudinary";
+import connectToDatabase from "@/lib/db";
+import ImageHashLog from "@/models/ImageHashLog";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function bufferToDataUri(buffer: Buffer, mimeType: string) {
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
+
+function sanitizeCleanerName(value: FormDataEntryValue | null) {
+  return typeof value === "string"
+    ? value
+        .replace(/[^\p{L}\p{N}\s'-]/gu, "")
+        .replace(/\s+/g, " ")
+        .trim()
+    : "";
+}
+
+function sanitizeLabel(value: FormDataEntryValue | null, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 120) : fallback;
+}
+
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const cleanerName = sanitizeCleanerName(formData.get("cleanerName"));
+    const propertyName = sanitizeLabel(formData.get("propertyName"), "property");
+    const taskName = sanitizeLabel(formData.get("taskName"), "task");
+
+    if (!cleanerName) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Cleaner name is required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!(file instanceof File) || !file.type.startsWith("image/")) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "A valid image file is required.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const hash = createHash("sha256").update(buffer).digest("hex");
+
+    await connectToDatabase();
+
+    const existingHash = await ImageHashLog.findOne({ hash }).lean();
+
+    if (existingHash) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Duplicate Image Detected. Please take a new live photo.",
+        },
+        { status: 400 },
+      );
+    }
+
+    await ImageHashLog.create({
+      hash,
+      uploadedAt: new Date(),
+      cleanerName,
+    });
+
+    const uploadResult = await cloudinary.uploader.upload(bufferToDataUri(buffer, file.type), {
+      folder: "cleaner-qc/live",
+      resource_type: "image",
+      context: {
+        cleanerName,
+        propertyName,
+        taskName,
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      hash,
+      liveImageUrl: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
+    });
+  } catch (error) {
+    console.error("Upload task route failed:", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Upload failed.",
+      },
+      { status: 500 },
+    );
+  }
+}
+

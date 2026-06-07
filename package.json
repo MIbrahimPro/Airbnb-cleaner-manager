@@ -2,15 +2,21 @@
   "name": "airbnb-cleaner-quality-control",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "seed": "node scripts/seed.mjs",
+    "verify:seed": "node scripts/verify-seed.mjs"
   },
   "dependencies": {
+    "cloudinary": "^2.10.0",
     "lucide-react": "^0.468.0",
+    "mongoose": "^9.6.3",
     "next": "latest",
+    "openai": "^6.42.0",
     "react": "latest",
     "react-dom": "latest"
   },
