@@ -25,6 +25,14 @@ function sanitizeLabel(value: FormDataEntryValue | null, fallback: string) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, 120) : fallback;
 }
 
+function isSameUtcDay(left: Date, right: Date) {
+  return (
+    left.getUTCFullYear() === right.getUTCFullYear() &&
+    left.getUTCMonth() === right.getUTCMonth() &&
+    left.getUTCDate() === right.getUTCDate()
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -70,22 +78,17 @@ export async function POST(request: Request) {
     await connectToDatabase();
 
     const existingHash = await ImageHashLog.findOne({ hash }).lean();
+    const now = new Date();
 
-    if (existingHash) {
+    if (existingHash && !isSameUtcDay(new Date(existingHash.uploadedAt), now)) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Duplicate Image Detected. Please take a new live photo.",
+          error: "This photo was already used on a previous day. Please take a new live photo.",
         },
         { status: 400 },
       );
     }
-
-    await ImageHashLog.create({
-      hash,
-      uploadedAt: new Date(),
-      cleanerName,
-    });
 
     const cloudinary = getCloudinary();
     const uploadResult = await cloudinary.uploader.upload(bufferToDataUri(buffer, file.type), {
@@ -97,6 +100,14 @@ export async function POST(request: Request) {
         taskName,
       },
     });
+
+    if (!existingHash) {
+      await ImageHashLog.create({
+        hash,
+        uploadedAt: now,
+        cleanerName,
+      });
+    }
 
     return NextResponse.json({
       ok: true,

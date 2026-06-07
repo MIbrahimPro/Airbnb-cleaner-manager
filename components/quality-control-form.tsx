@@ -131,6 +131,20 @@ function getLocalDateTimeValue() {
   return local.toISOString().slice(0, 16);
 }
 
+function formatLocalDateTimeValue(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function sanitizeEmail(value: string) {
   return value.trim().toLowerCase().slice(0, 160);
 }
@@ -2081,7 +2095,9 @@ function InspectionForm({
             label="Submitted At"
             icon={<Clock3 aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
           >
-            <span className="truncate text-right text-[15px] font-normal text-[#007aff]">{scheduledAt}</span>
+            <span className="truncate text-right text-[15px] font-normal text-[#007aff]">
+              {formatLocalDateTimeValue(scheduledAt)}
+            </span>
           </SettingsRow>
         </SettingsSection>
 
