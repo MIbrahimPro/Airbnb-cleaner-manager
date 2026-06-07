@@ -66,6 +66,32 @@ function toCloudinaryPublicId(value) {
     .toLowerCase();
 }
 
+function getCoverPriority(taskName) {
+  const normalized = taskName.toLowerCase();
+
+  if (/\b(cover|hero|front|main)\b/.test(normalized)) {
+    return 0;
+  }
+
+  if (/\b(outdoor|outside|exterior|garden|patio|balcony|terrace|entrance|street|driveway|front)\b/.test(normalized)) {
+    return 1;
+  }
+
+  if (/\b(living|lounge|sitting|reception)\b/.test(normalized)) {
+    return 2;
+  }
+
+  if (/\b(bed|bedroom|master)\b/.test(normalized)) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function selectCoverImage(tasks) {
+  return [...tasks].sort((a, b) => getCoverPriority(a.taskName) - getCoverPriority(b.taskName))[0]?.referenceImageUrl ?? "";
+}
+
 async function getPropertyDirectories() {
   const entries = await readdir(baseImagesDir, { withFileTypes: true });
   return entries
@@ -114,7 +140,7 @@ async function seedProperties() {
       });
     }
 
-    const coverImage = tasks[0]?.referenceImageUrl ?? "";
+    const coverImage = selectCoverImage(tasks);
     const property = await Property.findOneAndUpdate(
       { name: propertyName },
       {

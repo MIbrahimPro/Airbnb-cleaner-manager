@@ -88,12 +88,13 @@ The code now validates AI keys at runtime when `/api/evaluate` or `/api/evaluate
 3. Select a place/task from the property grid.
 4. Review the reference image.
 5. Add a live photo.
-6. Submit the form.
-7. Confirm the duplicate-image guard rejects a reused exact image hash.
-8. If the AI result is `PASS`, the place becomes resolved.
-9. If the AI result is `FAIL`, use `Appeal` for a final senior review.
-10. After every place is resolved, finalize the session.
-11. Confirm the final score starts at 100 and loses 5 points for each final failed appeal.
+6. Add notes for linen issues, missing supplies, maintenance, or anything the AI/human reviewer should consider.
+7. Submit the form. Large camera images are compressed in the browser before upload for Netlify compatibility.
+8. Confirm the duplicate-image guard rejects a reused exact image hash.
+9. If the AI result is `PASS`, the place becomes resolved.
+10. If the AI result is `FAIL`, use `Appeal` for a final senior review.
+11. After every place is resolved, finalize the session.
+12. Confirm the final score starts at 100 and loses 5 points for each final failed appeal.
 
 ## Manager Testing Procedure
 
@@ -123,7 +124,7 @@ You are a strict short-term rental cleaning QA manager. Compare the reference im
 User content:
 
 ```text
-Task: <taskName>. First image is the reference. Second image is the live cleaner submission.
+Task: <taskName>. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: <notes or "None provided.">
 ```
 
 Images sent:
@@ -146,7 +147,7 @@ You are a Senior short-term rental QA Reviewer handling an appeal after an initi
 User content:
 
 ```text
-Appeal review for task: <taskName>. First image is the reference. Second image is the live cleaner submission.
+Appeal review for task: <taskName>. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: <notes or "None provided.">
 ```
 
 Images sent:

@@ -35,6 +35,7 @@ async function upsertEvaluationTask({
   taskName,
   liveImageUrl,
   referenceImageUrl,
+  cleanerNotes,
   result,
 }: {
   propertyId: string;
@@ -42,6 +43,7 @@ async function upsertEvaluationTask({
   taskName: string;
   liveImageUrl: string;
   referenceImageUrl: string;
+  cleanerNotes: string;
   result: EvaluationResult;
 }) {
   let session = await CleanSession.findOne({
@@ -70,6 +72,7 @@ async function upsertEvaluationTask({
     existingTask.referenceImageUrl = referenceImageUrl;
     existingTask.status = result.status;
     existingTask.aiFeedback = result.feedback;
+    existingTask.cleanerNotes = cleanerNotes;
     existingTask.appealed = false;
   } else {
     session.tasksCompleted.push({
@@ -78,6 +81,7 @@ async function upsertEvaluationTask({
       referenceImageUrl,
       status: result.status,
       aiFeedback: result.feedback,
+      cleanerNotes,
       appealed: false,
     });
   }
@@ -94,6 +98,7 @@ export async function POST(request: Request) {
     const taskName = sanitizeText(body.taskName);
     const liveImageUrl = sanitizeText(body.liveImageUrl);
     const referenceImageUrl = sanitizeText(body.referenceImageUrl);
+    const cleanerNotes = sanitizeText(body.cleanerNotes);
 
     if (!mongoose.Types.ObjectId.isValid(propertyId)) {
       return NextResponse.json({ ok: false, error: "Invalid property id." }, { status: 400 });
@@ -124,7 +129,7 @@ export async function POST(request: Request) {
           content: [
             {
               type: "text",
-              text: `Task: ${taskName}. First image is the reference. Second image is the live cleaner submission.`,
+              text: `Task: ${taskName}. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: ${cleanerNotes || "None provided."}`,
             },
             {
               type: "image_url",
@@ -159,6 +164,7 @@ export async function POST(request: Request) {
       taskName,
       liveImageUrl,
       referenceImageUrl,
+      cleanerNotes,
       result,
     });
 

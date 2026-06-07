@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
-import cloudinary from "@/lib/cloudinary";
+import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
 import Property from "@/models/Property";
 
@@ -22,6 +22,32 @@ function toCloudinaryPublicId(value: string) {
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
+}
+
+function getCoverPriority(taskName: string) {
+  const normalized = taskName.toLowerCase();
+
+  if (/\b(cover|hero|front|main)\b/.test(normalized)) {
+    return 0;
+  }
+
+  if (/\b(outdoor|outside|exterior|garden|patio|balcony|terrace|entrance|street|driveway|front)\b/.test(normalized)) {
+    return 1;
+  }
+
+  if (/\b(living|lounge|sitting|reception)\b/.test(normalized)) {
+    return 2;
+  }
+
+  if (/\b(bed|bedroom|master)\b/.test(normalized)) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function selectCoverImage(tasks: { taskName: string; referenceImageUrl: string }[]) {
+  return [...tasks].sort((a, b) => getCoverPriority(a.taskName) - getCoverPriority(b.taskName))[0]?.referenceImageUrl ?? "";
 }
 
 async function getPropertyDirectories() {
@@ -62,6 +88,7 @@ async function seedPropertiesFromAssets() {
         toCloudinaryPublicId(taskName),
       ].join("/");
 
+      const cloudinary = getCloudinary();
       const uploadResult = await cloudinary.uploader.upload(imagePath, {
         public_id: publicId,
         overwrite: true,
@@ -74,7 +101,7 @@ async function seedPropertiesFromAssets() {
       });
     }
 
-    const coverImage = tasks[0]?.referenceImageUrl ?? "";
+    const coverImage = selectCoverImage(tasks);
     const property = await Property.findOneAndUpdate(
       { name: propertyName },
       {

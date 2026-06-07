@@ -5,6 +5,43 @@ import Property from "@/models/Property";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type PropertyTask = {
+  taskName: string;
+  referenceImageUrl: string;
+};
+
+function getCoverPriority(taskName: string) {
+  const normalized = taskName.toLowerCase();
+
+  if (/\b(cover|hero|front|main)\b/.test(normalized)) {
+    return 0;
+  }
+
+  if (/\b(outdoor|outside|exterior|garden|patio|balcony|terrace|entrance|street|driveway|front)\b/.test(normalized)) {
+    return 1;
+  }
+
+  if (/\b(living|lounge|sitting|reception)\b/.test(normalized)) {
+    return 2;
+  }
+
+  if (/\b(bed|bedroom|master)\b/.test(normalized)) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function resolvePropertyCover(coverImage: string, tasks: PropertyTask[]) {
+  const taskUrls = new Set(tasks.map((task) => task.referenceImageUrl));
+
+  if (coverImage && !taskUrls.has(coverImage)) {
+    return coverImage;
+  }
+
+  return [...tasks].sort((a, b) => getCoverPriority(a.taskName) - getCoverPriority(b.taskName))[0]?.referenceImageUrl ?? "";
+}
+
 export async function GET() {
   try {
     await connectToDatabase();
@@ -19,7 +56,7 @@ export async function GET() {
       properties: properties.map((property) => ({
         id: property._id.toString(),
         name: property.name,
-        coverImage: property.coverImage,
+        coverImage: resolvePropertyCover(property.coverImage, property.tasks),
         taskCount: property.tasks.length,
       })),
     });
@@ -34,4 +71,3 @@ export async function GET() {
     );
   }
 }
-

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import cloudinary from "@/lib/cloudinary";
+import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
 import Property from "@/models/Property";
 
@@ -30,6 +30,7 @@ async function uploadReferenceImage(file: File, propertyId: string, taskName: st
   const buffer = Buffer.from(await file.arrayBuffer());
 
   return new Promise<string>((resolve, reject) => {
+    const cloudinary = getCloudinary();
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: `cleaner-qc/admin-references/${propertyId}`,

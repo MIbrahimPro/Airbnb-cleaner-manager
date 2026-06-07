@@ -20,15 +20,8 @@ import {
 } from "lucide-react";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const cleanTypes = ["Standard Changeover", "Deep Clean", "Owner Stay"] as const;
-
-type CleanType = (typeof cleanTypes)[number];
-
-const cleanTypeLabels: Record<CleanType, string> = {
-  "Standard Changeover": "Standard",
-  "Deep Clean": "Deep",
-  "Owner Stay": "Owner",
-};
+const maxClientImageBytes = 1.8 * 1024 * 1024;
+const maxClientImageDimension = 1800;
 
 type AppUser = {
   id: string;
@@ -105,6 +98,7 @@ type ManagedUser = {
 type HistorySession = {
   id: string;
   cleanerName: string;
+  propertyId: string;
   propertyName: string;
   totalScore: number;
   finalized: boolean;
@@ -116,6 +110,7 @@ type HistorySession = {
     taskName: string;
     appealed: boolean;
     aiFeedback: string;
+    cleanerNotes: string;
     liveImageUrl: string;
   }[];
 };
@@ -124,7 +119,6 @@ type AdminTab = "properties" | "cleaners" | "history";
 
 type TaskDraft = {
   taskName: string;
-  referenceImageUrl: string;
   file: File | null;
 };
 
@@ -143,6 +137,62 @@ function sanitizeEmail(value: string) {
 
 function sanitizePassword(value: string) {
   return value.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 128);
+}
+
+async function compressImageFile(file: File) {
+  if (!file.type.startsWith("image/") || file.size <= maxClientImageBytes) {
+    return file;
+  }
+
+  const imageBitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxClientImageDimension / Math.max(imageBitmap.width, imageBitmap.height));
+  const width = Math.max(1, Math.round(imageBitmap.width * scale));
+  const height = Math.max(1, Math.round(imageBitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    imageBitmap.close();
+    return file;
+  }
+
+  context.drawImage(imageBitmap, 0, 0, width, height);
+  imageBitmap.close();
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, "image/jpeg", 0.78);
+  });
+
+  if (!blob || blob.size >= file.size) {
+    return file;
+  }
+
+  return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
+    type: "image/jpeg",
+    lastModified: Date.now(),
+  });
+}
+
+async function buildPropertyFormData({
+  role,
+  name,
+  coverFile,
+}: {
+  role: AppUser["role"];
+  name: string;
+  coverFile: File | null;
+}) {
+  const formData = new FormData();
+  formData.append("role", role);
+  formData.append("name", name);
+
+  if (coverFile) {
+    formData.append("coverFile", await compressImageFile(coverFile));
+  }
+
+  return formData;
 }
 
 export function QualityControlForm() {
@@ -522,15 +572,16 @@ function AccountBar({ user, onSignOut }: { user: AppUser; onSignOut: () => void 
 
 function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () => void }) {
   const canEditProperties = user.role === "ADMIN";
-  const [tab, setTab] = useState<AdminTab>(canEditProperties ? "properties" : "cleaners");
+  const [tab, setTab] = useState<AdminTab>("properties");
   const [properties, setProperties] = useState<AdminProperty[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [propertyName, setPropertyName] = useState("");
   const [propertyCover, setPropertyCover] = useState("");
+  const [propertyCoverFile, setPropertyCoverFile] = useState<File | null>(null);
   const [newPropertyName, setNewPropertyName] = useState("");
-  const [newPropertyCover, setNewPropertyCover] = useState("");
+  const [newPropertyCoverFile, setNewPropertyCoverFile] = useState<File | null>(null);
   const [taskDrafts, setTaskDrafts] = useState<Record<string, TaskDraft>>({});
-  const [newTask, setNewTask] = useState<TaskDraft>({ taskName: "", referenceImageUrl: "", file: null });
+  const [newTask, setNewTask] = useState<TaskDraft>({ taskName: "", file: null });
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [newUserName, setNewUserName] = useState("");
   const [newUserEmail, setNewUserEmail] = useState("");
@@ -538,6 +589,8 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
   const [newUserRole, setNewUserRole] = useState<AppUser["role"]>("CLEANER");
   const [history, setHistory] = useState<HistorySession[]>([]);
   const [cleanerFilter, setCleanerFilter] = useState("");
+  const [selectedCleanerName, setSelectedCleanerName] = useState("");
+  const [historyPropertyId, setHistoryPropertyId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [portalError, setPortalError] = useState("");
@@ -561,6 +614,8 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
 
         if (canEditProperties) {
           requests.unshift(fetch(`/api/admin/properties?${params.toString()}`, { cache: "no-store" }));
+        } else {
+          requests.unshift(fetch("/api/properties", { cache: "no-store" }));
         }
 
         const responses = await Promise.all(requests);
@@ -573,23 +628,26 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
 
         let userPayloadIndex = 0;
 
-        if (canEditProperties) {
-          const nextProperties = payloads[0].properties as AdminProperty[];
-          setProperties(nextProperties);
-          userPayloadIndex = 1;
+        const nextProperties = (payloads[0].properties as (AdminProperty | PropertySummary)[]).map((property) => ({
+          ...property,
+          tasks: "tasks" in property ? property.tasks : [],
+        })) as AdminProperty[];
+        setProperties(nextProperties);
+        userPayloadIndex = 1;
 
+        if (canEditProperties) {
           const nextSelected =
             nextProperties.find((property) => property.id === nextSelectedPropertyId) ?? nextProperties[0] ?? null;
           setSelectedPropertyId(nextSelected?.id ?? "");
           setPropertyName(nextSelected?.name ?? "");
           setPropertyCover(nextSelected?.coverImage ?? "");
+          setPropertyCoverFile(null);
           setTaskDrafts(
             Object.fromEntries(
               (nextSelected?.tasks ?? []).map((task) => [
                 task.taskName,
                 {
                   taskName: task.taskName,
-                  referenceImageUrl: task.referenceImageUrl,
                   file: null,
                 },
               ]),
@@ -620,13 +678,14 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
     setSelectedPropertyId(property.id);
     setPropertyName(property.name);
     setPropertyCover(property.coverImage);
+    setPropertyCoverFile(null);
+    setHistoryPropertyId(property.id);
     setTaskDrafts(
       Object.fromEntries(
         property.tasks.map((task) => [
           task.taskName,
           {
             taskName: task.taskName,
-            referenceImageUrl: task.referenceImageUrl,
             file: null,
           },
         ]),
@@ -647,11 +706,10 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
     try {
       const response = await fetch("/api/admin/properties", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: await buildPropertyFormData({
           role: user.role,
           name: newPropertyName.trim(),
-          coverImage: newPropertyCover.trim(),
+          coverFile: newPropertyCoverFile,
         }),
       });
       const data = await response.json();
@@ -661,7 +719,7 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
       }
 
       setNewPropertyName("");
-      setNewPropertyCover("");
+      setNewPropertyCoverFile(null);
       await loadPortalData(data.property.id);
     } catch (error) {
       setPortalError(error instanceof Error ? error.message : "Unable to create property.");
@@ -681,11 +739,10 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
     try {
       const response = await fetch(`/api/admin/properties/${selectedProperty.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: await buildPropertyFormData({
           role: user.role,
           name: propertyName.trim(),
-          coverImage: propertyCover.trim(),
+          coverFile: propertyCoverFile,
         }),
       });
       const data = await response.json();
@@ -748,14 +805,13 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
       const formData = new FormData();
       formData.append("role", user.role);
       formData.append("taskName", draft.taskName.trim());
-      formData.append("referenceImageUrl", draft.referenceImageUrl.trim());
 
       if (previousTaskName) {
         formData.append("previousTaskName", previousTaskName);
       }
 
       if (draft.file) {
-        formData.append("file", draft.file);
+        formData.append("file", await compressImageFile(draft.file));
       }
 
       const response = await fetch(`/api/admin/properties/${selectedProperty.id}/tasks`, {
@@ -768,7 +824,7 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
         throw new Error(data.error ?? "Unable to save place.");
       }
 
-      setNewTask({ taskName: "", referenceImageUrl: "", file: null });
+      setNewTask({ taskName: "", file: null });
       await loadPortalData(selectedProperty.id);
     } catch (error) {
       setPortalError(error instanceof Error ? error.message : "Unable to save place.");
@@ -884,13 +940,13 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
 
   const filteredHistory = useMemo(() => {
     const normalized = cleanerFilter.trim().toLowerCase();
-
-    if (!normalized) {
-      return history;
-    }
-
-    return history.filter((session) => session.cleanerName.toLowerCase().includes(normalized));
-  }, [cleanerFilter, history]);
+    return history.filter((session) => {
+      const matchesSearch = !normalized || session.cleanerName.toLowerCase().includes(normalized);
+      const matchesCleaner = !selectedCleanerName || session.cleanerName === selectedCleanerName;
+      const matchesProperty = !historyPropertyId || session.propertyId === historyPropertyId;
+      return matchesSearch && matchesCleaner && matchesProperty;
+    });
+  }, [cleanerFilter, history, historyPropertyId, selectedCleanerName]);
 
   return (
     <main className="min-h-[100dvh] bg-[#f2f2f7] text-[#1c1c1e]">
@@ -910,7 +966,7 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
         </header>
 
         <div className="mb-5 grid rounded-[12px] bg-[#e5e5ea] p-0.5 sm:inline-grid sm:grid-flow-col">
-          {canEditProperties ? <PortalTabButton active={tab === "properties"} label="Properties" onClick={() => setTab("properties")} /> : null}
+          <PortalTabButton active={tab === "properties"} label="Properties" onClick={() => setTab("properties")} />
           <PortalTabButton active={tab === "cleaners"} label="Cleaners" onClick={() => setTab("cleaners")} />
           <PortalTabButton active={tab === "history"} label="History" onClick={() => setTab("history")} />
         </div>
@@ -924,17 +980,18 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
             selectedProperty={selectedProperty}
             propertyName={propertyName}
             propertyCover={propertyCover}
+            propertyCoverFile={propertyCoverFile}
             newPropertyName={newPropertyName}
-            newPropertyCover={newPropertyCover}
+            newPropertyCoverFile={newPropertyCoverFile}
             taskDrafts={taskDrafts}
             newTask={newTask}
             isSaving={isSaving}
             onCreateProperty={createProperty}
             onSelectProperty={selectProperty}
             onPropertyNameChange={setPropertyName}
-            onPropertyCoverChange={setPropertyCover}
+            onPropertyCoverFileChange={setPropertyCoverFile}
             onNewPropertyNameChange={setNewPropertyName}
-            onNewPropertyCoverChange={setNewPropertyCover}
+            onNewPropertyCoverFileChange={setNewPropertyCoverFile}
             onSaveProperty={saveSelectedProperty}
             onDeleteProperty={deleteSelectedProperty}
             onTaskDraftChange={(taskName, draft) =>
@@ -949,6 +1006,19 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
             onNewTaskChange={(draft) => setNewTask((current) => ({ ...current, ...draft }))}
             onSaveTask={saveTask}
             onDeleteTask={deleteTask}
+          />
+        ) : null}
+
+        {!isLoading && tab === "properties" && !canEditProperties ? (
+          <PropertyHistoryPanel
+            properties={properties}
+            selectedPropertyId={historyPropertyId}
+            history={filteredHistory}
+            onSelectProperty={(propertyId) => {
+              setHistoryPropertyId(propertyId);
+              setSelectedCleanerName("");
+              setCleanerFilter("");
+            }}
           />
         ) : null}
 
@@ -967,6 +1037,13 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
             onNewUserPasswordChange={setNewUserPassword}
             onNewUserRoleChange={setNewUserRole}
             onSetUserActive={setUserActive}
+            selectedCleanerName={selectedCleanerName}
+            selectedCleanerHistory={filteredHistory}
+            onSelectCleaner={(cleanerName) => {
+              setSelectedCleanerName(cleanerName);
+              setHistoryPropertyId("");
+              setCleanerFilter("");
+            }}
           />
         ) : null}
 
@@ -975,6 +1052,11 @@ function ManagementPortal({ user, onSignOut }: { user: AppUser; onSignOut: () =>
             cleanerFilter={cleanerFilter}
             history={filteredHistory}
             onCleanerFilterChange={setCleanerFilter}
+            onClearFilters={() => {
+              setSelectedCleanerName("");
+              setHistoryPropertyId("");
+              setCleanerFilter("");
+            }}
           />
         ) : null}
       </div>
@@ -1001,17 +1083,18 @@ function PropertiesAdminPanel({
   selectedProperty,
   propertyName,
   propertyCover,
+  propertyCoverFile,
   newPropertyName,
-  newPropertyCover,
+  newPropertyCoverFile,
   taskDrafts,
   newTask,
   isSaving,
   onCreateProperty,
   onSelectProperty,
   onPropertyNameChange,
-  onPropertyCoverChange,
+  onPropertyCoverFileChange,
   onNewPropertyNameChange,
-  onNewPropertyCoverChange,
+  onNewPropertyCoverFileChange,
   onSaveProperty,
   onDeleteProperty,
   onTaskDraftChange,
@@ -1023,17 +1106,18 @@ function PropertiesAdminPanel({
   selectedProperty: AdminProperty | null;
   propertyName: string;
   propertyCover: string;
+  propertyCoverFile: File | null;
   newPropertyName: string;
-  newPropertyCover: string;
+  newPropertyCoverFile: File | null;
   taskDrafts: Record<string, TaskDraft>;
   newTask: TaskDraft;
   isSaving: boolean;
   onCreateProperty: (event: FormEvent<HTMLFormElement>) => void;
   onSelectProperty: (property: AdminProperty) => void;
   onPropertyNameChange: (value: string) => void;
-  onPropertyCoverChange: (value: string) => void;
+  onPropertyCoverFileChange: (file: File | null) => void;
   onNewPropertyNameChange: (value: string) => void;
-  onNewPropertyCoverChange: (value: string) => void;
+  onNewPropertyCoverFileChange: (file: File | null) => void;
   onSaveProperty: () => void;
   onDeleteProperty: () => void;
   onTaskDraftChange: (taskName: string, draft: Partial<TaskDraft>) => void;
@@ -1054,12 +1138,9 @@ function PropertiesAdminPanel({
                 placeholder="Property name"
                 className="h-11 w-full rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 text-[16px] outline-none transition placeholder:text-[#8e8e93] focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
               />
-              <input
-                aria-label="New property cover image URL"
-                value={newPropertyCover}
-                onChange={(event) => onNewPropertyCoverChange(event.target.value)}
-                placeholder="Cover image URL"
-                className="mt-2 h-11 w-full rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 text-[16px] outline-none transition placeholder:text-[#8e8e93] focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
+              <ImageUploadLabel
+                label={newPropertyCoverFile ? newPropertyCoverFile.name : "Upload cover image"}
+                onFileChange={onNewPropertyCoverFileChange}
               />
             </div>
           </SettingsSection>
@@ -1103,7 +1184,17 @@ function PropertiesAdminPanel({
       {selectedProperty ? (
         <div className="space-y-5">
           <SettingsSection title="Property Details">
-            <div className="grid gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_140px]">
+            <div className="grid gap-3 px-4 py-3 sm:grid-cols-[160px_minmax(0,1fr)_140px]">
+              <div className="aspect-[4/3] overflow-hidden rounded-[12px] bg-[#e5e5ea]">
+                {propertyCover ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={propertyCover} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-[#8e8e93]">
+                    <Building2 aria-hidden="true" className="h-7 w-7" strokeWidth={1.8} />
+                  </div>
+                )}
+              </div>
               <div className="space-y-2">
                 <input
                   aria-label="Property name"
@@ -1111,12 +1202,9 @@ function PropertiesAdminPanel({
                   onChange={(event) => onPropertyNameChange(event.target.value)}
                   className="h-11 w-full rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 text-[16px] outline-none transition focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
                 />
-                <input
-                  aria-label="Property cover image URL"
-                  value={propertyCover}
-                  onChange={(event) => onPropertyCoverChange(event.target.value)}
-                  placeholder="Cover image URL"
-                  className="h-11 w-full rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 text-[16px] outline-none transition placeholder:text-[#8e8e93] focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
+                <ImageUploadLabel
+                  label={propertyCoverFile ? propertyCoverFile.name : "Replace cover image"}
+                  onFileChange={onPropertyCoverFileChange}
                 />
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
@@ -1157,7 +1245,6 @@ function PropertiesAdminPanel({
               selectedProperty.tasks.map((task, index) => {
                 const draft = taskDrafts[task.taskName] ?? {
                   taskName: task.taskName,
-                  referenceImageUrl: task.referenceImageUrl,
                   file: null,
                 };
 
@@ -1206,9 +1293,9 @@ function TaskEditRow({
   return (
     <div className="grid gap-3 px-4 py-3 sm:grid-cols-[96px_minmax(0,1fr)_96px]">
       <div className="aspect-square overflow-hidden rounded-[12px] bg-[#e5e5ea]">
-        {referencePreview || draft.referenceImageUrl ? (
+        {referencePreview ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={referencePreview || draft.referenceImageUrl} alt="" className="h-full w-full object-cover" />
+          <img src={referencePreview} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-[#8e8e93]">
             <ImageIcon aria-hidden="true" className="h-6 w-6" strokeWidth={1.8} />
@@ -1223,23 +1310,10 @@ function TaskEditRow({
           placeholder="Place name"
           className="h-11 w-full rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 text-[16px] outline-none transition placeholder:text-[#8e8e93] focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
         />
-        <input
-          aria-label="Reference image URL"
-          value={draft.referenceImageUrl}
-          onChange={(event) => onChange({ referenceImageUrl: event.target.value })}
-          placeholder="Reference image URL"
-          className="h-11 w-full rounded-[12px] border border-black/[0.08] bg-[#f9f9fb] px-3 text-[16px] outline-none transition placeholder:text-[#8e8e93] focus:border-[#007aff]/40 focus:bg-white focus:ring-4 focus:ring-[#007aff]/10"
+        <ImageUploadLabel
+          label={draft.file ? draft.file.name : referencePreview ? "Replace reference image" : "Upload reference image"}
+          onFileChange={(file) => onChange({ file })}
         />
-        <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-[12px] border border-dashed border-black/[0.14] bg-[#f9f9fb] px-3 text-[14px] font-medium text-[#007aff] transition hover:bg-white">
-          <Upload aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
-          {draft.file ? draft.file.name : "Upload reference image"}
-          <input
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(event) => onChange({ file: event.target.files?.[0] ?? null })}
-          />
-        </label>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-1">
         <button
@@ -1265,6 +1339,21 @@ function TaskEditRow({
   );
 }
 
+function ImageUploadLabel({ label, onFileChange }: { label: string; onFileChange: (file: File | null) => void }) {
+  return (
+    <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 rounded-[12px] border border-dashed border-black/[0.14] bg-[#f9f9fb] px-3 text-[14px] font-medium text-[#007aff] transition hover:bg-white">
+      <Upload aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
+      <span className="min-w-0 truncate">{label}</span>
+      <input
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+      />
+    </label>
+  );
+}
+
 function CleanerAdminPanel({
   user,
   users,
@@ -1279,6 +1368,9 @@ function CleanerAdminPanel({
   onNewUserPasswordChange,
   onNewUserRoleChange,
   onSetUserActive,
+  selectedCleanerName,
+  selectedCleanerHistory,
+  onSelectCleaner,
 }: {
   user: AppUser;
   users: ManagedUser[];
@@ -1293,7 +1385,64 @@ function CleanerAdminPanel({
   onNewUserPasswordChange: (value: string) => void;
   onNewUserRoleChange: (role: AppUser["role"]) => void;
   onSetUserActive: (managedUser: ManagedUser, active: boolean) => void;
+  selectedCleanerName: string;
+  selectedCleanerHistory: HistorySession[];
+  onSelectCleaner: (cleanerName: string) => void;
 }) {
+  if (user.role === "MANAGER") {
+    const cleaners = users.filter((managedUser) => managedUser.role === "CLEANER");
+
+    return (
+      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <SettingsSection title="Cleaners">
+          {cleaners.length === 0 ? (
+            <div className="px-4 py-5 text-[14px] text-[#6e6e73]">No cleaners found.</div>
+          ) : (
+            cleaners.map((managedUser, index) => (
+              <div key={managedUser.id}>
+                {index > 0 ? <RowDivider /> : null}
+                <button
+                  type="button"
+                  onClick={() => onSelectCleaner(managedUser.name)}
+                  className={`flex min-h-[64px] w-full items-center gap-3 px-4 py-2 text-left transition ${
+                    selectedCleanerName === managedUser.name ? "bg-[#f2f2f7]" : "hover:bg-[#fbfbfd]"
+                  }`}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#f2f2f7] text-[#007aff]">
+                    <UserRound aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[16px] font-medium text-[#1c1c1e]">{managedUser.name}</span>
+                    <span className="block truncate text-[13px] leading-5 text-[#6e6e73]">{managedUser.email}</span>
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${
+                      managedUser.active ? "bg-[#34c759]/10 text-[#248a3d]" : "bg-[#ff3b30]/10 text-[#b42318]"
+                    }`}
+                  >
+                    {managedUser.active ? "Active" : "Inactive"}
+                  </span>
+                </button>
+              </div>
+            ))
+          )}
+        </SettingsSection>
+
+        <SettingsSection title={selectedCleanerName ? `${selectedCleanerName} History` : "Cleaner History"}>
+          {!selectedCleanerName ? (
+            <div className="px-4 py-5 text-[14px] text-[#6e6e73]">Select a cleaner to review visits, scores, and failed tasks.</div>
+          ) : selectedCleanerHistory.length === 0 ? (
+            <div className="px-4 py-5 text-[14px] text-[#6e6e73]">No sessions found for this cleaner yet.</div>
+          ) : (
+            selectedCleanerHistory.map((session, index) => (
+              <HistorySessionCard key={session.id} session={session} showDivider={index > 0} />
+            ))
+          )}
+        </SettingsSection>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
       <form onSubmit={onCreateUser} className="space-y-3">
@@ -1385,14 +1534,71 @@ function CleanerAdminPanel({
   );
 }
 
+function PropertyHistoryPanel({
+  properties,
+  selectedPropertyId,
+  history,
+  onSelectProperty,
+}: {
+  properties: AdminProperty[];
+  selectedPropertyId: string;
+  history: HistorySession[];
+  onSelectProperty: (propertyId: string) => void;
+}) {
+  const selectedProperty = properties.find((property) => property.id === selectedPropertyId) ?? null;
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <SettingsSection title="Properties">
+        {properties.length === 0 ? (
+          <div className="px-4 py-5 text-[14px] text-[#6e6e73]">No properties found.</div>
+        ) : (
+          properties.map((property, index) => (
+            <div key={property.id}>
+              {index > 0 ? <RowDivider /> : null}
+              <button
+                type="button"
+                onClick={() => onSelectProperty(property.id)}
+                className={`flex min-h-[64px] w-full items-center gap-3 px-4 py-2 text-left transition ${
+                  selectedPropertyId === property.id ? "bg-[#f2f2f7]" : "hover:bg-[#fbfbfd]"
+                }`}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#f2f2f7] text-[#007aff]">
+                  <Building2 aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[16px] font-medium text-[#1c1c1e]">{property.name}</span>
+                  <span className="block text-[13px] leading-5 text-[#6e6e73]">{property.taskCount} places</span>
+                </span>
+              </button>
+            </div>
+          ))
+        )}
+      </SettingsSection>
+
+      <SettingsSection title={selectedProperty ? `${selectedProperty.name} Visits` : "Property Visits"}>
+        {!selectedProperty ? (
+          <div className="px-4 py-5 text-[14px] text-[#6e6e73]">Select a property to see cleaner visits and scores.</div>
+        ) : history.length === 0 ? (
+          <div className="px-4 py-5 text-[14px] text-[#6e6e73]">No sessions found for this property yet.</div>
+        ) : (
+          history.map((session, index) => <HistorySessionCard key={session.id} session={session} showDivider={index > 0} />)
+        )}
+      </SettingsSection>
+    </div>
+  );
+}
+
 function HistoryAdminPanel({
   cleanerFilter,
   history,
   onCleanerFilterChange,
+  onClearFilters,
 }: {
   cleanerFilter: string;
   history: HistorySession[];
   onCleanerFilterChange: (value: string) => void;
+  onClearFilters: () => void;
 }) {
   return (
     <div className="space-y-5">
@@ -1411,58 +1617,73 @@ function HistoryAdminPanel({
         />
       </div>
 
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="min-h-9 rounded-full px-3 text-[13px] font-semibold text-[#007aff] transition hover:bg-white active:scale-[0.98]"
+        >
+          Clear filters
+        </button>
+      </div>
+
       <SettingsSection title="Cleaner History">
         {history.length === 0 ? (
           <div className="px-4 py-5 text-[14px] text-[#6e6e73]">No cleaner sessions yet.</div>
         ) : (
-          history.map((session, index) => (
-            <div key={session.id}>
-              {index > 0 ? <RowDivider /> : null}
-              <div className="px-4 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-[17px] font-semibold leading-6 text-[#1c1c1e]">{session.propertyName}</p>
-                    <p className="mt-0.5 text-[13px] leading-5 text-[#6e6e73]">
-                      {session.cleanerName} · {formatHistoryDate(session.updatedAt)}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <HistoryPill label={`${session.totalScore}`} tone={session.totalScore >= 90 ? "green" : "red"} />
-                    <HistoryPill label={session.finalized ? "Final" : "Open"} tone={session.finalized ? "blue" : "gray"} />
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <ScoreMini label="Tasks" value={session.taskCount} />
-                  <ScoreMini label="Fails" value={session.failedCount} />
-                  <ScoreMini label="Appeals" value={session.appealedCount} />
-                </div>
-                {session.failedTasks.length > 0 ? (
-                  <div className="mt-3 space-y-2">
-                    {session.failedTasks.map((task) => (
-                      <div key={task.taskName} className="rounded-[12px] bg-[#f9f9fb] px-3 py-2">
-                        <p className="text-[14px] font-semibold text-[#1c1c1e]">{task.taskName}</p>
-                        <p className="mt-1 text-[13px] leading-5 text-[#6e6e73]">
-                          {task.aiFeedback || "No AI feedback saved."}
-                        </p>
-                        {task.liveImageUrl ? (
-                          <a
-                            href={task.liveImageUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 inline-flex text-[13px] font-medium text-[#007aff]"
-                          >
-                            Review image
-                          </a>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ))
+          history.map((session, index) => <HistorySessionCard key={session.id} session={session} showDivider={index > 0} />)
         )}
       </SettingsSection>
+    </div>
+  );
+}
+
+function HistorySessionCard({ session, showDivider }: { session: HistorySession; showDivider: boolean }) {
+  return (
+    <div>
+      {showDivider ? <RowDivider /> : null}
+      <div className="px-4 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[17px] font-semibold leading-6 text-[#1c1c1e]">{session.propertyName}</p>
+            <p className="mt-0.5 text-[13px] leading-5 text-[#6e6e73]">
+              {session.cleanerName} · {formatHistoryDate(session.updatedAt)}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <HistoryPill label={`${session.totalScore}`} tone={session.totalScore >= 90 ? "green" : "red"} />
+            <HistoryPill label={session.finalized ? "Final" : "Open"} tone={session.finalized ? "blue" : "gray"} />
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <ScoreMini label="Tasks" value={session.taskCount} />
+          <ScoreMini label="Fails" value={session.failedCount} />
+          <ScoreMini label="Appeals" value={session.appealedCount} />
+        </div>
+        {session.failedTasks.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {session.failedTasks.map((task) => (
+              <div key={task.taskName} className="rounded-[12px] bg-[#f9f9fb] px-3 py-2">
+                <p className="text-[14px] font-semibold text-[#1c1c1e]">{task.taskName}</p>
+                <p className="mt-1 text-[13px] leading-5 text-[#6e6e73]">{task.aiFeedback || "No AI feedback saved."}</p>
+                {task.cleanerNotes ? (
+                  <p className="mt-1 text-[13px] leading-5 text-[#6e6e73]">Cleaner notes: {task.cleanerNotes}</p>
+                ) : null}
+                {task.liveImageUrl ? (
+                  <a
+                    href={task.liveImageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-flex text-[13px] font-medium text-[#007aff]"
+                  >
+                    Review image
+                  </a>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1669,7 +1890,6 @@ function InspectionForm({
   onResolved: () => Promise<void>;
 }) {
   const [scheduledAt, setScheduledAt] = useState("");
-  const [cleanType, setCleanType] = useState<CleanType>("Standard Changeover");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1741,8 +1961,9 @@ function InspectionForm({
     setEvaluation(null);
 
     try {
+      const compressedFile = await compressImageFile(photos[0].file);
       const formData = new FormData();
-      formData.append("file", photos[0].file);
+      formData.append("file", compressedFile);
       formData.append("cleanerName", user.name);
       formData.append("propertyName", property.name);
       formData.append("taskName", task.taskName);
@@ -1769,6 +1990,7 @@ function InspectionForm({
           taskName: task.taskName,
           liveImageUrl: uploadedImageUrl,
           referenceImageUrl: task.referenceImageUrl,
+          cleanerNotes: notes.trim(),
         }),
       });
       const evaluationData = await evaluationResponse.json();
@@ -1856,44 +2078,11 @@ function InspectionForm({
       <form onSubmit={handleSubmit} className="space-y-7">
         <SettingsSection title="Clean Configuration">
           <SettingsRow
-            label="Date & Time"
+            label="Submitted At"
             icon={<Clock3 aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
           >
-            <input
-              aria-label="Date and time"
-              type="datetime-local"
-              value={scheduledAt}
-              onChange={(event) => setScheduledAt(event.target.value)}
-              className="h-11 min-w-0 flex-1 bg-transparent text-right text-[15px] font-normal text-[#007aff] outline-none [color-scheme:light]"
-            />
+            <span className="truncate text-right text-[15px] font-normal text-[#007aff]">{scheduledAt}</span>
           </SettingsRow>
-          <RowDivider />
-          <div className="px-4 py-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <span className="text-[16px] font-normal text-[#1c1c1e]">Type of Clean</span>
-              <span className="text-[13px] text-[#8e8e93]">{cleanType}</span>
-            </div>
-            <div className="grid grid-cols-3 rounded-[10px] bg-[#e5e5ea] p-0.5 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.03)]">
-              {cleanTypes.map((type) => {
-                const isSelected = cleanType === type;
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => setCleanType(type)}
-                    className={`min-h-9 rounded-[8px] px-2 text-[13px] font-medium leading-none tracking-[-0.01em] transition active:scale-[0.98] ${
-                      isSelected
-                        ? "bg-white text-[#1c1c1e] shadow-[0_1px_3px_rgba(0,0,0,0.14)]"
-                        : "text-[#3a3a3c] hover:text-[#1c1c1e]"
-                    }`}
-                  >
-                    <span className="block truncate sm:hidden">{cleanTypeLabels[type]}</span>
-                    <span className="hidden truncate sm:block">{type}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </SettingsSection>
 
         <SettingsSection title="Report" footer="The first selected live photo is checked for duplicates before upload.">

@@ -77,7 +77,7 @@ export async function POST(request: Request) {
           content: [
             {
               type: "text",
-              text: `Appeal review for task: ${taskName}. First image is the reference. Second image is the live cleaner submission.`,
+              text: `Appeal review for task: ${taskName}. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: ${task.cleanerNotes || "None provided."}`,
             },
             {
               type: "image_url",

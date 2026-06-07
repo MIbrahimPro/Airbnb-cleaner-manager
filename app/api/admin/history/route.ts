@@ -11,6 +11,7 @@ type CompletedTask = {
   status: string;
   appealed?: boolean;
   aiFeedback?: string;
+  cleanerNotes?: string;
   liveImageUrl?: string;
 };
 
@@ -28,6 +29,7 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const role = params.get("role");
     const cleanerName = sanitizeText(params.get("cleanerName"));
+    const propertyId = sanitizeText(params.get("propertyId"));
 
     if (!canViewHistory(role)) {
       return NextResponse.json({ ok: false, error: "Manager or admin access is required." }, { status: 403 });
@@ -35,7 +37,10 @@ export async function GET(request: Request) {
 
     await connectToDatabase();
 
-    const query = cleanerName ? { cleanerName } : {};
+    const query = {
+      ...(cleanerName ? { cleanerName } : {}),
+      ...(propertyId ? { propertyId } : {}),
+    };
     const sessions = await CleanSession.find(query).sort({ updatedAt: -1 }).limit(80).lean();
     const propertyIds = Array.from(new Set(sessions.map((session) => session.propertyId.toString())));
     const properties = await Property.find({ _id: { $in: propertyIds } }).select({ name: 1 }).lean();
@@ -62,6 +67,7 @@ export async function GET(request: Request) {
             taskName: task.taskName,
             appealed: Boolean(task.appealed),
             aiFeedback: task.aiFeedback ?? "",
+            cleanerNotes: task.cleanerNotes ?? "",
             liveImageUrl: task.liveImageUrl ?? "",
           })),
         };

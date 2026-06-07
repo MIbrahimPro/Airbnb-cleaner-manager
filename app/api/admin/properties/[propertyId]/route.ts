@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
+import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 import Property from "@/models/Property";
@@ -21,12 +22,38 @@ function isAdminRole(value: unknown) {
   return sanitizeText(value, 20) === "ADMIN";
 }
 
+async function uploadCoverImage(file: File, propertyId: string, propertyName: string) {
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  return new Promise<string>((resolve, reject) => {
+    const cloudinary = getCloudinary();
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: `cleaner-qc/property-covers/${propertyId}`,
+        public_id: `${propertyName}-${Date.now()}`,
+        resource_type: "image",
+        overwrite: true,
+      },
+      (error, result) => {
+        if (error || !result?.secure_url) {
+          reject(error ?? new Error("Cloudinary cover upload failed."));
+          return;
+        }
+
+        resolve(result.secure_url);
+      },
+    );
+
+    uploadStream.end(buffer);
+  });
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { propertyId } = await context.params;
-    const body = await request.json();
+    const formData = await request.formData();
 
-    if (!isAdminRole(body.role)) {
+    if (!isAdminRole(formData.get("role"))) {
       return NextResponse.json({ ok: false, error: "Admin access is required." }, { status: 403 });
     }
 
@@ -34,8 +61,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "Invalid property id." }, { status: 400 });
     }
 
-    const name = sanitizeText(body.name);
-    const coverImage = sanitizeText(body.coverImage, 2000);
+    const name = sanitizeText(formData.get("name"));
+    const coverFile = formData.get("coverFile");
 
     if (!name) {
       return NextResponse.json({ ok: false, error: "Property name is required." }, { status: 400 });
@@ -43,27 +70,26 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     await connectToDatabase();
 
-    const property = await Property.findByIdAndUpdate(
-      propertyId,
-      {
-        $set: {
-          name,
-          coverImage,
-        },
-      },
-      { new: true },
-    ).lean();
+    const existingProperty = await Property.findById(propertyId);
 
-    if (!property) {
+    if (!existingProperty) {
       return NextResponse.json({ ok: false, error: "Property not found." }, { status: 404 });
     }
+
+    existingProperty.name = name;
+
+    if (coverFile instanceof File && coverFile.size > 0) {
+      existingProperty.coverImage = await uploadCoverImage(coverFile, propertyId, name);
+    }
+
+    await existingProperty.save();
 
     return NextResponse.json({
       ok: true,
       property: {
-        id: property._id.toString(),
-        name: property.name,
-        coverImage: property.coverImage,
+        id: existingProperty._id.toString(),
+        name: existingProperty.name,
+        coverImage: existingProperty.coverImage,
       },
     });
   } catch (error) {

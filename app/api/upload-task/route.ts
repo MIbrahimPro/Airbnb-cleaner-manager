@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import cloudinary from "@/lib/cloudinary";
+import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
 import ImageHashLog from "@/models/ImageHashLog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+const maxUploadBytes = 5 * 1024 * 1024;
 
 function bufferToDataUri(buffer: Buffer, mimeType: string) {
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
@@ -52,6 +53,16 @@ export async function POST(request: Request) {
       );
     }
 
+    if (file.size > maxUploadBytes) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Image is too large. Please use a smaller or compressed photo.",
+        },
+        { status: 413 },
+      );
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const hash = createHash("sha256").update(buffer).digest("hex");
@@ -76,6 +87,7 @@ export async function POST(request: Request) {
       cleanerName,
     });
 
+    const cloudinary = getCloudinary();
     const uploadResult = await cloudinary.uploader.upload(bufferToDataUri(buffer, file.type), {
       folder: "cleaner-qc/live",
       resource_type: "image",
@@ -103,4 +115,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

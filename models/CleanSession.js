@@ -29,6 +29,11 @@ const completedTaskSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    cleanerNotes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     appealed: {
       type: Boolean,
       default: false,
@@ -73,4 +78,3 @@ const cleanSessionSchema = new mongoose.Schema(
 );
 
 export default mongoose.models.CleanSession || mongoose.model("CleanSession", cleanSessionSchema);
-
