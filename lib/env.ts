@@ -14,8 +14,18 @@ type OptionalServerEnvKey =
   | "AI_MODEL_BASE"
   | "AI_MODEL_APPEAL";
 
+function normalizeEnvValue(value: string | undefined) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.replace(/^['"]|['"]$/g, "");
+}
+
 export function getRequiredEnv(key: RequiredServerEnvKey) {
-  const value = process.env[key];
+  const value = normalizeEnvValue(process.env[key]);
 
   if (!value) {
     throw new Error(`Missing required environment variable: ${key}`);
@@ -25,5 +35,5 @@ export function getRequiredEnv(key: RequiredServerEnvKey) {
 }
 
 export function getOptionalEnv(key: OptionalServerEnvKey) {
-  return process.env[key];
+  return normalizeEnvValue(process.env[key]);
 }

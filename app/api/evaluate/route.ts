@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import { getAiClient, getAiConfig } from "@/lib/ai";
+import { getAiAuthErrorMessage, getAiClient, getAiConfig } from "@/lib/ai";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 
@@ -176,12 +176,14 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Evaluate route failed:", error);
+    const aiAuthError = getAiAuthErrorMessage(error);
+
     return NextResponse.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Evaluation failed.",
+        error: aiAuthError ?? (error instanceof Error ? error.message : "Evaluation failed."),
       },
-      { status: 500 },
+      { status: aiAuthError ? 401 : 500 },
     );
   }
 }

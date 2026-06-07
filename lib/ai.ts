@@ -15,7 +15,7 @@ export function getAiConfig() {
 export function getAiClient() {
   const config = getAiConfig();
   const openAiKey = getOptionalEnv("OPENAI_API_KEY");
-  const ollamaKey = process.env.OLLAMA_KEY;
+  const ollamaKey = process.env.OLLAMA_KEY?.trim().replace(/^['"]|['"]$/g, "");
   const apiKey = config.provider === "openai" ? openAiKey : ollamaKey;
 
   if (!apiKey) {
@@ -30,4 +30,18 @@ export function getAiClient() {
     baseURL: config.provider === "openai" ? undefined : config.baseURL,
     apiKey,
   });
+}
+
+export function getAiAuthErrorMessage(error: unknown) {
+  const status =
+    typeof error === "object" && error !== null && "status" in error ? Number((error as { status?: unknown }).status) : 0;
+
+  if (status === 401) {
+    const config = getAiConfig();
+    const keyName = config.provider === "openai" ? "OPENAI_API_KEY" : "OLLAMA_KEY";
+
+    return `AI provider unauthorized. Check ${keyName} in Netlify environment variables, remove surrounding quotes/spaces, and redeploy. Active provider: ${config.provider}.`;
+  }
+
+  return null;
 }
