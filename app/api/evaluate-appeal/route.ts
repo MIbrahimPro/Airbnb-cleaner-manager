@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import aiClient, { aiConfig } from "@/lib/ai";
+import { getAiClient, getAiConfig } from "@/lib/ai";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 
@@ -62,13 +62,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const aiConfig = getAiConfig();
+    const aiClient = getAiClient();
     const completion = await aiClient.chat.completions.create({
       model: aiConfig.appealModel,
       messages: [
         {
           role: "system",
           content:
-            "You are a Senior QA Reviewer. Perform a rigorous second pass comparing the live image against the reference image. Be fair, but strict. Return ONLY a JSON object: { 'status': 'PASS' or 'FAIL', 'feedback': 'Specific reason if failed, empty if passed' }.",
+            "You are a Senior short-term rental QA Reviewer handling an appeal after an initial cleaning failure. Perform a rigorous second pass comparing the reference image and the live cleaner submission for the same property place/task. Only overturn to PASS when the live image clearly proves the correct area is guest-ready. Keep or set FAIL if the image is the wrong room, wrong property, unrelated area/object, screenshot/old photo, too blurry, too dark, too cropped, blocked, or taken from an angle that prevents verification. Keep or set FAIL for visible dirt, hair, stains, trash, wet surfaces, clutter, missed supplies, poor staging, items not returned to the expected layout, incorrect/missing pillow covers or linens, messy pillows, towels not folded/placed correctly, unmade beds, dirty bathroom fixtures, dirty kitchen surfaces, unclean floors, streaked mirrors/glass, bins not emptied, or visible safety/maintenance concerns. Be fair about harmless angle, lighting, and minor decor differences, but protect guest quality and do not rely on assumptions. Return ONLY valid JSON with this exact shape: { \"status\": \"PASS\" or \"FAIL\", \"feedback\": \"Specific reason if failed, empty if passed\" }.",
         },
         {
           role: "user",
@@ -129,4 +131,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

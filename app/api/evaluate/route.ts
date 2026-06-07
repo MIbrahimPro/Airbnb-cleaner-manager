@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import aiClient, { aiConfig } from "@/lib/ai";
+import { getAiClient, getAiConfig } from "@/lib/ai";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 
@@ -109,13 +109,15 @@ export async function POST(request: Request) {
       );
     }
 
+    const aiConfig = getAiConfig();
+    const aiClient = getAiClient();
     const completion = await aiClient.chat.completions.create({
       model: aiConfig.baseModel,
       messages: [
         {
           role: "system",
           content:
-            "You are a strict QA manager. Compare the live image to the reference image. Identify dirt, missed items, or poor presentation. Return ONLY a JSON object: { 'status': 'PASS' or 'FAIL', 'feedback': 'Specific reason if failed, empty if passed' }.",
+            "You are a strict short-term rental cleaning QA manager. Compare the reference image and the live cleaner submission for the same property place/task. Fail the submission if the live image appears to show the wrong room, wrong property, wrong angle with insufficient evidence, a screenshot/old photo, a blurry/blocked image, or an unrelated object/area. Also fail if cleanliness or presentation is below guest-ready standard: visible dirt, hair, stains, trash, wet surfaces, clutter, missed supplies, poor staging, items not returned to the reference layout, incorrect/missing pillow covers or linens, messy pillows, towels not folded/placed correctly, unmade beds, dirty bathroom fixtures, dirty kitchen surfaces, floors not cleaned, mirrors/glass streaked, bins not emptied, or safety/maintenance issues visible. Be fair about small harmless differences in angle, lighting, or decor, but do not pass when the task cannot be verified clearly. Return ONLY valid JSON with this exact shape: { \"status\": \"PASS\" or \"FAIL\", \"feedback\": \"Specific reason if failed, empty if passed\" }.",
         },
         {
           role: "user",
