@@ -4,7 +4,7 @@ import { getOptionalEnv, getRequiredEnv } from "@/lib/env";
 export function getAiConfig() {
   return {
     provider: "ollama",
-    baseURL: getOptionalEnv("AI_BASE_URL") ?? "https://api.ollama.com/v1",
+    baseURL: getOptionalEnv("AI_BASE_URL") ?? "https://ollama.com/v1",
     baseModel: getOptionalEnv("AI_MODEL_BASE") ?? getOptionalEnv("AI_MODEL") ?? "gemma3:4b",
     appealModel: getOptionalEnv("AI_MODEL_APPEAL") ?? "llama3.2-vision",
   };
