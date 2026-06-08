@@ -8,7 +8,6 @@ export const requiredServerEnvKeys = [
 
 type RequiredServerEnvKey = (typeof requiredServerEnvKeys)[number];
 type OptionalServerEnvKey =
-  | "OPENAI_API_KEY"
   | "AI_BASE_URL"
   | "AI_MODEL"
   | "AI_MODEL_BASE"

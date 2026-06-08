@@ -509,7 +509,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: AppUser) => void }) {
                   setEmail(sanitizeEmail(event.target.value));
                   setError("");
                 }}
-                placeholder="aneeq.cleaner@example.local"
+                placeholder="example@email.com"
                 inputMode="email"
                 autoComplete="email"
                 className="h-11 min-w-0 flex-1 bg-transparent text-right text-[16px] font-normal text-[#007aff] outline-none placeholder:text-[#8e8e93]"

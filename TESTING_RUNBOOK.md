@@ -24,20 +24,12 @@ CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
 OLLAMA_KEY
-AI_BASE_URL=https://api.ollama.com/v1
+AI_BASE_URL=https://ollama.com/v1
 AI_MODEL_BASE=gemma3:4b
 AI_MODEL_APPEAL=llama3.2-vision
 ```
 
-To switch later to OpenAI, add:
-
-```text
-OPENAI_API_KEY
-AI_MODEL_BASE=<your OpenAI base/evaluation model>
-AI_MODEL_APPEAL=<your stronger OpenAI appeal model>
-```
-
-If `OPENAI_API_KEY` is present, the AI wrapper uses the OpenAI endpoint. Otherwise it uses Ollama Cloud.
+This build is Ollama-only. OpenAI support can be added later when the real OpenAI key is ready.
 
 ## Netlify Deployment Notes
 
@@ -45,7 +37,7 @@ The Netlify build error `Missing required environment variable: OLLAMA_KEY` mean
 
 `Site configuration -> Environment variables`
 
-The code now validates AI keys at runtime when `/api/evaluate` or `/api/evaluate-appeal` is called, so a build can complete even before AI routes are exercised. The deployed AI review still needs either `OLLAMA_KEY` or `OPENAI_API_KEY`.
+The code now validates AI keys at runtime when `/api/evaluate` or `/api/evaluate-appeal` is called, so a build can complete even before AI routes are exercised. The deployed AI review still needs `OLLAMA_KEY`.
 
 ## Local Setup Procedure
 
@@ -132,6 +124,8 @@ Images sent:
 1. `referenceImageUrl`
 2. `liveImageUrl`
 
+The server fetches AI-optimized Cloudinary JPEG transforms (`f_jpg,q_auto:eco,w_1280,c_limit`) and converts them to `data:image/...;base64,...` before sending them to Ollama. Converted images are cached briefly while the serverless function is warm.
+
 Default model:
 
 ```text
@@ -154,6 +148,8 @@ Images sent:
 
 1. `referenceImageUrl`
 2. `liveImageUrl`
+
+The server fetches AI-optimized Cloudinary JPEG transforms (`f_jpg,q_auto:eco,w_1280,c_limit`) and converts them to `data:image/...;base64,...` before sending them to Ollama. Converted images are cached briefly while the serverless function is warm.
 
 Default model:
 

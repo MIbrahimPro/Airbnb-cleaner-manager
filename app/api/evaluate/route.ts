@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import { getAiAuthErrorMessage, getAiClient, getAiConfig } from "@/lib/ai";
+import { fetchImageAsDataUrl, getAiAuthErrorMessage, getAiClient, getAiConfig } from "@/lib/ai";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 
@@ -116,6 +116,10 @@ export async function POST(request: Request) {
 
     const aiConfig = getAiConfig();
     const aiClient = getAiClient();
+    const [referenceImageDataUrl, liveImageDataUrl] = await Promise.all([
+      fetchImageAsDataUrl(referenceImageUrl),
+      fetchImageAsDataUrl(liveImageUrl),
+    ]);
     const completion = await aiClient.chat.completions.create({
       model: aiConfig.baseModel,
       messages: [
@@ -133,17 +137,13 @@ export async function POST(request: Request) {
             },
             {
               type: "image_url",
-              image_url: {
-                url: referenceImageUrl,
-              },
+              image_url: referenceImageDataUrl,
             },
             {
               type: "image_url",
-              image_url: {
-                url: liveImageUrl,
-              },
+              image_url: liveImageDataUrl,
             },
-          ],
+          ] as never,
         },
       ],
       temperature: 0,
