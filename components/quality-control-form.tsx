@@ -16,12 +16,20 @@ import {
   Trash2,
   Upload,
   UserRound,
-  X,
 } from "lucide-react";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const maxClientImageBytes = 1.8 * 1024 * 1024;
 const maxClientImageDimension = 1800;
+const cleanTypes = ["Standard Changeover", "Deep Clean", "Owner Stay"] as const;
+
+type CleanType = (typeof cleanTypes)[number];
+
+const cleanTypeLabels: Record<CleanType, string> = {
+  "Standard Changeover": "Standard",
+  "Deep Clean": "Deep",
+  "Owner Stay": "Owner",
+};
 
 type AppUser = {
   id: string;
@@ -63,6 +71,14 @@ type AiEvaluation = {
   sessionId?: string;
   appealed?: boolean;
   totalScore?: number;
+};
+
+type InspectionResult = {
+  evaluation: AiEvaluation;
+  liveImageUrl: string;
+  submittedAt: string;
+  cleanType: CleanType;
+  notes: string;
 };
 
 type SessionTaskStatus = {
@@ -110,6 +126,7 @@ type HistorySession = {
     taskName: string;
     appealed: boolean;
     aiFeedback: string;
+    cleanType: string;
     cleanerNotes: string;
     liveImageUrl: string;
   }[];
@@ -1904,14 +1921,12 @@ function InspectionForm({
   onResolved: () => Promise<void>;
 }) {
   const [scheduledAt, setScheduledAt] = useState("");
+  const [cleanType, setCleanType] = useState<CleanType>("Standard Changeover");
   const [notes, setNotes] = useState("");
   const [photos, setPhotos] = useState<PhotoPreview[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showFeedback, setShowFeedback] = useState(false);
   const [uploadError, setUploadError] = useState("");
-  const [liveImageUrl, setLiveImageUrl] = useState("");
-  const [evaluation, setEvaluation] = useState<AiEvaluation | null>(null);
-  const [isAppealing, setIsAppealing] = useState(false);
+  const [result, setResult] = useState<InspectionResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1969,10 +1984,7 @@ function InspectionForm({
     }
 
     setIsSubmitting(true);
-    setShowFeedback(false);
     setUploadError("");
-    setLiveImageUrl("");
-    setEvaluation(null);
 
     try {
       const compressedFile = await compressImageFile(photos[0].file);
@@ -1993,7 +2005,6 @@ function InspectionForm({
       }
 
       const uploadedImageUrl = data.liveImageUrl as string;
-      setLiveImageUrl(uploadedImageUrl);
 
       const evaluationResponse = await fetch("/api/evaluate", {
         method: "POST",
@@ -2004,6 +2015,7 @@ function InspectionForm({
           taskName: task.taskName,
           liveImageUrl: uploadedImageUrl,
           referenceImageUrl: task.referenceImageUrl,
+          cleanType,
           cleanerNotes: notes.trim(),
         }),
       });
@@ -2013,14 +2025,19 @@ function InspectionForm({
         throw new Error(evaluationData.error ?? "AI evaluation failed.");
       }
 
-      setEvaluation({
-        ...evaluationData.result,
-        model: evaluationData.model,
-        sessionId: evaluationData.sessionId,
-        appealed: false,
+      setResult({
+        evaluation: {
+          ...evaluationData.result,
+          model: evaluationData.model,
+          sessionId: evaluationData.sessionId,
+          appealed: false,
+        },
+        liveImageUrl: uploadedImageUrl,
+        submittedAt: scheduledAt,
+        cleanType,
+        notes: notes.trim(),
       });
       await onResolved();
-      setShowFeedback(true);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -2028,43 +2045,27 @@ function InspectionForm({
     }
   }
 
-  async function handleAppeal() {
-    if (!evaluation?.sessionId || !selectedTaskFailed(evaluation) || isAppealing) {
-      return;
-    }
-
-    setIsAppealing(true);
+  function resetForRetake() {
+    setResult(null);
     setUploadError("");
+    setPhotos((current) => {
+      current.forEach((photo) => URL.revokeObjectURL(photo.url));
+      return [];
+    });
+  }
 
-    try {
-      const response = await fetch("/api/evaluate-appeal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: evaluation.sessionId,
-          taskName: task.taskName,
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error ?? "Appeal failed.");
-      }
-
-      setEvaluation({
-        ...data.result,
-        model: data.model,
-        sessionId: evaluation.sessionId,
-        appealed: true,
-        totalScore: data.totalScore,
-      });
-      await onResolved();
-      setShowFeedback(true);
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Appeal failed.");
-    } finally {
-      setIsAppealing(false);
-    }
+  if (result) {
+    return (
+      <InspectionResultPage
+        property={property}
+        task={task}
+        result={result}
+        onBack={onBack}
+        onRetake={resetForRetake}
+        onResolved={onResolved}
+        onResultChange={setResult}
+      />
+    );
   }
 
   return (
@@ -2099,6 +2100,33 @@ function InspectionForm({
               {formatLocalDateTimeValue(scheduledAt)}
             </span>
           </SettingsRow>
+          <RowDivider />
+          <div className="px-4 py-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="text-[16px] font-normal text-[#1c1c1e]">Type of Clean</span>
+              <span className="text-[13px] text-[#8e8e93]">{cleanType}</span>
+            </div>
+            <div className="grid grid-cols-3 rounded-[10px] bg-[#e5e5ea] p-0.5 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.03)]">
+              {cleanTypes.map((type) => {
+                const isSelected = cleanType === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setCleanType(type)}
+                    className={`min-h-9 rounded-[8px] px-2 text-[13px] font-medium leading-none transition active:scale-[0.98] ${
+                      isSelected
+                        ? "bg-white text-[#1c1c1e] shadow-[0_1px_3px_rgba(0,0,0,0.14)]"
+                        : "text-[#3a3a3c] hover:text-[#1c1c1e]"
+                    }`}
+                  >
+                    <span className="block truncate sm:hidden">{cleanTypeLabels[type]}</span>
+                    <span className="hidden truncate sm:block">{type}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </SettingsSection>
 
         <SettingsSection title="Report" footer="The first selected live photo is checked for duplicates before upload.">
@@ -2200,61 +2228,183 @@ function InspectionForm({
         </button>
       </form>
 
-      {showFeedback ? (
-        <div className="fixed inset-x-3 bottom-4 mx-auto max-w-[520px] rounded-[18px] border border-black/[0.06] bg-white/95 p-4 shadow-[0_18px_48px_-22px_rgba(0,0,0,0.42)] backdrop-blur-xl">
-          <div className="flex items-start gap-3">
-            <div
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] ${
-                evaluation?.status === "FAIL" ? "bg-[#ff3b30]/10 text-[#b42318]" : "bg-[#34c759]/10 text-[#248a3d]"
-              }`}
-            >
-              <CheckCircle2 aria-hidden="true" className="h-6 w-6" strokeWidth={2} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[15px] font-semibold text-[#1c1c1e]">
-                {evaluation?.status === "FAIL" ? "Retake needed" : "Inspection passed"}
-              </p>
-              <p className="mt-1 text-[13px] leading-5 text-[#6e6e73]">
-                {evaluation?.status === "PASS"
-                  ? "AI review passed this place."
-                  : evaluation?.feedback || "AI review failed. Retake the photo and submit again."}
-              </p>
-              {evaluation?.model ? <p className="mt-1 text-[12px] text-[#8e8e93]">Model: {evaluation.model}</p> : null}
-              {typeof evaluation?.totalScore === "number" ? (
-                <p className="mt-1 text-[12px] text-[#8e8e93]">Score: {evaluation.totalScore}</p>
-              ) : null}
-              {selectedTaskFailed(evaluation) && !evaluation?.appealed ? (
-                <button
-                  type="button"
-                  onClick={handleAppeal}
-                  disabled={isAppealing}
-                  className="mt-3 inline-flex min-h-9 items-center justify-center rounded-full bg-[#1c1c1e] px-4 text-[13px] font-semibold text-white transition hover:bg-[#2c2c2e] focus:outline-none focus:ring-4 focus:ring-black/10 active:scale-[0.98] disabled:bg-[#c7c7cc]"
-                >
-                  {isAppealing ? "Reviewing appeal" : "Appeal"}
-                </button>
-              ) : null}
-              {liveImageUrl ? (
-                <a
-                  href={liveImageUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-flex text-[13px] font-medium text-[#007aff]"
-                >
-                  View uploaded image
-                </a>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              aria-label="Dismiss feedback"
-              onClick={() => setShowFeedback(false)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#8e8e93] transition hover:bg-[#f2f2f7] hover:text-[#1c1c1e] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10"
-            >
-              <X aria-hidden="true" className="h-4 w-4" strokeWidth={2} />
-            </button>
+    </div>
+  );
+}
+
+function InspectionResultPage({
+  property,
+  task,
+  result,
+  onBack,
+  onRetake,
+  onResolved,
+  onResultChange,
+}: {
+  property: PropertyDetail;
+  task: PropertyTask;
+  result: InspectionResult;
+  onBack: () => void;
+  onRetake: () => void;
+  onResolved: () => Promise<void>;
+  onResultChange: (result: InspectionResult) => void;
+}) {
+  const [isAppealing, setIsAppealing] = useState(false);
+  const [error, setError] = useState("");
+  const evaluation = result.evaluation;
+  const passed = evaluation.status === "PASS";
+
+  async function handleAppeal() {
+    if (!evaluation.sessionId || !selectedTaskFailed(evaluation) || isAppealing) {
+      return;
+    }
+
+    setIsAppealing(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/evaluate-appeal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: evaluation.sessionId,
+          taskName: task.taskName,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error ?? "Appeal failed.");
+      }
+
+      onResultChange({
+        ...result,
+        evaluation: {
+          ...data.result,
+          model: data.model,
+          sessionId: evaluation.sessionId,
+          appealed: true,
+          totalScore: data.totalScore,
+        },
+      });
+      await onResolved();
+    } catch (appealError) {
+      setError(appealError instanceof Error ? appealError.message : "Appeal failed.");
+    } finally {
+      setIsAppealing(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <BackButton label="All places" onClick={onBack} />
+
+      <section className="rounded-[18px] border border-black/[0.06] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+        <div className="flex items-start gap-4">
+          <span
+            className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-[16px] ${
+              passed ? "bg-[#34c759]/10 text-[#248a3d]" : "bg-[#ff3b30]/10 text-[#b42318]"
+            }`}
+          >
+            <CheckCircle2 aria-hidden="true" className="h-8 w-8" strokeWidth={2} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium leading-5 text-[#6e6e73]">{property.name}</p>
+            <h2 className="mt-1 text-[30px] font-semibold leading-9 tracking-[-0.022em] text-[#1d1d1f]">
+              {passed ? "Inspection Passed" : "Review Needed"}
+            </h2>
+            <p className="mt-2 text-[15px] leading-6 text-[#6e6e73]">
+              {passed
+                ? `${task.taskName} passed AI quality review.`
+                : evaluation.feedback || "AI review failed. Retake the photo or submit an appeal."}
+            </p>
           </div>
         </div>
+      </section>
+
+      <SettingsSection title="Result Details">
+        <SettingsRow
+          label="Place"
+          icon={<MapPinned aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}
+        >
+          <span className="truncate text-right text-[15px] text-[#3a3a3c]">{task.taskName}</span>
+        </SettingsRow>
+        <RowDivider />
+        <SettingsRow label="Type" icon={<CheckCircle2 aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}>
+          <span className="truncate text-right text-[15px] text-[#3a3a3c]">{result.cleanType}</span>
+        </SettingsRow>
+        <RowDivider />
+        <SettingsRow label="Submitted" icon={<Clock3 aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}>
+          <span className="truncate text-right text-[15px] text-[#3a3a3c]">
+            {formatLocalDateTimeValue(result.submittedAt)}
+          </span>
+        </SettingsRow>
+        {evaluation.model ? (
+          <>
+            <RowDivider />
+            <SettingsRow label="Model" icon={<ImageIcon aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}>
+              <span className="truncate text-right text-[15px] text-[#3a3a3c]">{evaluation.model}</span>
+            </SettingsRow>
+          </>
+        ) : null}
+        {typeof evaluation.totalScore === "number" ? (
+          <>
+            <RowDivider />
+            <SettingsRow label="Score" icon={<CheckCircle2 aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={2} />}>
+              <span className="truncate text-right text-[15px] text-[#3a3a3c]">{evaluation.totalScore}</span>
+            </SettingsRow>
+          </>
+        ) : null}
+      </SettingsSection>
+
+      {result.notes ? (
+        <SettingsSection title="Cleaner Notes">
+          <p className="px-4 py-3 text-[15px] leading-6 text-[#3a3a3c]">{result.notes}</p>
+        </SettingsSection>
       ) : null}
+
+      <SettingsSection title="Submitted Photo">
+        <div className="overflow-hidden rounded-[14px] bg-white">
+          <div className="aspect-[16/10] bg-[#e5e5ea]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={result.liveImageUrl} alt="" className="h-full w-full object-cover" />
+          </div>
+          <div className="px-4 py-3">
+            <a href={result.liveImageUrl} target="_blank" rel="noreferrer" className="text-[15px] font-medium text-[#007aff]">
+              View uploaded image
+            </a>
+          </div>
+        </div>
+      </SettingsSection>
+
+      {error ? <InlineError message={error} /> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {selectedTaskFailed(evaluation) && !evaluation.appealed ? (
+          <button
+            type="button"
+            onClick={handleAppeal}
+            disabled={isAppealing}
+            className="flex min-h-[52px] items-center justify-center gap-2 rounded-[14px] bg-[#1c1c1e] px-5 text-[17px] font-semibold text-white transition hover:bg-[#2c2c2e] focus:outline-none focus:ring-4 focus:ring-black/10 active:scale-[0.98] disabled:bg-[#c7c7cc]"
+          >
+            {isAppealing ? (
+              <>
+                <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" strokeWidth={2} />
+                Reviewing Appeal
+              </>
+            ) : (
+              "Appeal"
+            )}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onRetake}
+          className="flex min-h-[52px] items-center justify-center rounded-[14px] bg-white px-5 text-[17px] font-semibold text-[#007aff] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition hover:bg-[#fbfbfd] focus:outline-none focus:ring-4 focus:ring-[#007aff]/10 active:scale-[0.98]"
+        >
+          Retake Photo
+        </button>
+      </div>
     </div>
   );
 }

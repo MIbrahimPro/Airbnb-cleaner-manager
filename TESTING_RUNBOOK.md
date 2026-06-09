@@ -79,22 +79,24 @@ The code now validates AI keys at runtime when `/api/evaluate` or `/api/evaluate
 2. Select a property from the properties screen.
 3. Select a place/task from the property grid.
 4. Review the reference image.
-5. Add a live photo.
-6. Add notes for linen issues, missing supplies, maintenance, or anything the AI/human reviewer should consider.
-7. Submit the form. Large camera images are compressed in the browser before upload for Netlify compatibility.
-8. Confirm the duplicate-image guard rejects a reused exact image hash.
-9. If the AI result is `PASS`, the place becomes resolved.
-10. If the AI result is `FAIL`, use `Appeal` for a final senior review.
-11. After every place is resolved, finalize the session.
-12. Confirm the final score starts at 100 and loses 5 points for each final failed appeal.
+5. Select the type of clean: `Standard Changeover`, `Deep Clean`, or `Owner Stay`.
+6. Add a live photo.
+7. Add notes for linen issues, missing supplies, maintenance, or anything the AI/human reviewer should consider.
+8. Submit the form. Large camera images are compressed in the browser before upload for Netlify compatibility.
+9. Review the dedicated result screen. The old floating toast flow is no longer used.
+10. Confirm same-day duplicate photo retries are allowed, while older reused photos are rejected.
+11. If the AI result is `PASS`, the place becomes resolved.
+12. If the AI result is `FAIL`, use `Appeal` from the result screen for a final senior review.
+13. After every place is resolved, finalize the session.
+14. Confirm the final score starts at 100 and loses 5 points for each final failed appeal.
 
 ## Manager Testing Procedure
 
 1. Sign in with `manager@example.local`.
-2. Confirm the manager sees cleaner management and history.
-3. Create or deactivate cleaner accounts.
+2. Confirm the manager can see cleaners, click a cleaner, and review that cleaner's history and scores.
+3. Confirm the manager can see properties, click a property, and review which cleaners visited and when.
 4. Confirm the manager can view cleaner session history, scores, failed tasks, appeals, and AI feedback.
-5. Confirm the manager does not see property/place/image CRUD controls.
+5. Confirm the manager does not see add-cleaner controls or property/place/image CRUD controls.
 
 ## Admin Testing Procedure
 
@@ -116,7 +118,7 @@ You are a strict short-term rental cleaning QA manager. Compare the reference im
 User content:
 
 ```text
-Task: <taskName>. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: <notes or "None provided.">
+Task: <taskName>. Clean type: <clean type or "Not specified">. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: <notes or "None provided.">
 ```
 
 Images sent:
@@ -141,7 +143,7 @@ You are a Senior short-term rental QA Reviewer handling an appeal after an initi
 User content:
 
 ```text
-Appeal review for task: <taskName>. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: <notes or "None provided.">
+Appeal review for task: <taskName>. Clean type: <clean type or "Not specified">. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: <notes or "None provided.">
 ```
 
 Images sent:

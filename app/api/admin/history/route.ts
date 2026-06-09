@@ -11,6 +11,7 @@ type CompletedTask = {
   status: string;
   appealed?: boolean;
   aiFeedback?: string;
+  cleanType?: string;
   cleanerNotes?: string;
   liveImageUrl?: string;
 };
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
             taskName: task.taskName,
             appealed: Boolean(task.appealed),
             aiFeedback: task.aiFeedback ?? "",
+            cleanType: task.cleanType ?? "",
             cleanerNotes: task.cleanerNotes ?? "",
             liveImageUrl: task.liveImageUrl ?? "",
           })),

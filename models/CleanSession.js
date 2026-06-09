@@ -29,6 +29,11 @@ const completedTaskSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    cleanType: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     cleanerNotes: {
       type: String,
       default: "",

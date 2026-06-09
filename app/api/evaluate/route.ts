@@ -35,6 +35,7 @@ async function upsertEvaluationTask({
   taskName,
   liveImageUrl,
   referenceImageUrl,
+  cleanType,
   cleanerNotes,
   result,
 }: {
@@ -43,6 +44,7 @@ async function upsertEvaluationTask({
   taskName: string;
   liveImageUrl: string;
   referenceImageUrl: string;
+  cleanType: string;
   cleanerNotes: string;
   result: EvaluationResult;
 }) {
@@ -72,6 +74,7 @@ async function upsertEvaluationTask({
     existingTask.referenceImageUrl = referenceImageUrl;
     existingTask.status = result.status;
     existingTask.aiFeedback = result.feedback;
+    existingTask.cleanType = cleanType;
     existingTask.cleanerNotes = cleanerNotes;
     existingTask.appealed = false;
   } else {
@@ -81,6 +84,7 @@ async function upsertEvaluationTask({
       referenceImageUrl,
       status: result.status,
       aiFeedback: result.feedback,
+      cleanType,
       cleanerNotes,
       appealed: false,
     });
@@ -98,6 +102,7 @@ export async function POST(request: Request) {
     const taskName = sanitizeText(body.taskName);
     const liveImageUrl = sanitizeText(body.liveImageUrl);
     const referenceImageUrl = sanitizeText(body.referenceImageUrl);
+    const cleanType = sanitizeText(body.cleanType);
     const cleanerNotes = sanitizeText(body.cleanerNotes);
 
     if (!mongoose.Types.ObjectId.isValid(propertyId)) {
@@ -133,7 +138,7 @@ export async function POST(request: Request) {
           content: [
             {
               type: "text",
-              text: `Task: ${taskName}. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: ${cleanerNotes || "None provided."}`,
+              text: `Task: ${taskName}. Clean type: ${cleanType || "Not specified"}. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: ${cleanerNotes || "None provided."}`,
             },
             {
               type: "image_url",
@@ -164,6 +169,7 @@ export async function POST(request: Request) {
       taskName,
       liveImageUrl,
       referenceImageUrl,
+      cleanType,
       cleanerNotes,
       result,
     });
