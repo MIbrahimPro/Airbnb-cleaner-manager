@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import { fetchImageAsDataUrl, getAiAuthErrorMessage, getAiClient, getAiConfig } from "@/lib/ai";
+import {
+  createAiImageContentPart,
+  getAiAuthErrorMessage,
+  getAiClient,
+  getAiConfig,
+  getAiImageInput,
+} from "@/lib/ai";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 
@@ -121,9 +127,9 @@ export async function POST(request: Request) {
 
     const aiConfig = getAiConfig();
     const aiClient = getAiClient();
-    const [referenceImageDataUrl, liveImageDataUrl] = await Promise.all([
-      fetchImageAsDataUrl(referenceImageUrl),
-      fetchImageAsDataUrl(liveImageUrl),
+    const [referenceImageInput, liveImageInput] = await Promise.all([
+      getAiImageInput(referenceImageUrl, aiConfig.provider),
+      getAiImageInput(liveImageUrl, aiConfig.provider),
     ]);
     const completion = await aiClient.chat.completions.create({
       model: aiConfig.baseModel,
@@ -140,18 +146,20 @@ export async function POST(request: Request) {
               type: "text",
               text: `Task: ${taskName}. Clean type: ${cleanType || "Not specified"}. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: ${cleanerNotes || "None provided."}`,
             },
-            {
-              type: "image_url",
-              image_url: referenceImageDataUrl,
-            },
-            {
-              type: "image_url",
-              image_url: liveImageDataUrl,
-            },
+            createAiImageContentPart(aiConfig.provider, referenceImageInput),
+            createAiImageContentPart(aiConfig.provider, liveImageInput),
           ] as never,
         },
       ],
       temperature: 0,
+      ...(aiConfig.provider === "openai"
+        ? {
+            max_completion_tokens: 320,
+            response_format: {
+              type: "json_object" as const,
+            },
+          }
+        : {}),
     });
 
     const content = completion.choices[0]?.message?.content;

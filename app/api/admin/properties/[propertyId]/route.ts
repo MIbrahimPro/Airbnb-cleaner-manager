@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
+import { validateImageUpload } from "@/lib/image-upload";
 import CleanSession from "@/models/CleanSession";
 import Property from "@/models/Property";
 
@@ -79,6 +80,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     existingProperty.name = name;
 
     if (coverFile instanceof File && coverFile.size > 0) {
+      const fileError = validateImageUpload(coverFile, "Cover image");
+
+      if (fileError) {
+        return NextResponse.json({ ok: false, error: fileError }, { status: 400 });
+      }
+
       existingProperty.coverImage = await uploadCoverImage(coverFile, propertyId, name);
     }
 

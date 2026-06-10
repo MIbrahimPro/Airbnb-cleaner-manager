@@ -6,26 +6,67 @@ const aiImageFetchTimeoutMs = 8_000;
 const maxAiImageBytes = 2.5 * 1024 * 1024;
 const imageDataUrlCache = new Map<string, { dataUrl: string; expiresAt: number }>();
 
+export type AiProvider = "openai" | "ollama";
+
+export type AiImageContentPart =
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+        detail: "high";
+      };
+    }
+  | {
+      type: "image_url";
+      image_url: string;
+    };
+
+function getAiProvider(): AiProvider {
+  const configuredProvider = getOptionalEnv("AI_PROVIDER")?.toLowerCase();
+
+  if (configuredProvider === "openai" || configuredProvider === "ollama") {
+    return configuredProvider;
+  }
+
+  return getOptionalEnv("OPENAI_API_KEY") ? "openai" : "ollama";
+}
+
 export function getAiConfig() {
+  const provider = getAiProvider();
+
+  if (provider === "openai") {
+    return {
+      provider,
+      baseModel: getOptionalEnv("OPENAI_MODEL_BASE") ?? getOptionalEnv("AI_MODEL_BASE") ?? "gpt-5.4-mini",
+      appealModel: getOptionalEnv("OPENAI_MODEL_APPEAL") ?? getOptionalEnv("AI_MODEL_APPEAL") ?? "gpt-5.4",
+    };
+  }
+
   return {
-    provider: "ollama",
+    provider,
     baseURL: getOptionalEnv("AI_BASE_URL") ?? "https://ollama.com/v1",
-    baseModel: getOptionalEnv("AI_MODEL_BASE") ?? getOptionalEnv("AI_MODEL") ?? "gemma3:4b",
-    appealModel: getOptionalEnv("AI_MODEL_APPEAL") ?? "llama3.2-vision",
+    baseModel:
+      getOptionalEnv("OLLAMA_MODEL_BASE") ?? getOptionalEnv("AI_MODEL_BASE") ?? getOptionalEnv("AI_MODEL") ?? "gemma3:4b",
+    appealModel: getOptionalEnv("OLLAMA_MODEL_APPEAL") ?? getOptionalEnv("AI_MODEL_APPEAL") ?? "llama3.2-vision",
   };
 }
 
 export function getAiClient() {
   const config = getAiConfig();
-  const ollamaKey = getRequiredEnv("OLLAMA_KEY");
+
+  if (config.provider === "openai") {
+    return new OpenAI({
+      apiKey: getRequiredEnv("OPENAI_API_KEY"),
+    });
+  }
 
   return new OpenAI({
     baseURL: config.baseURL,
-    apiKey: ollamaKey,
+    apiKey: getRequiredEnv("OLLAMA_KEY"),
   });
 }
 
-function getAiOptimizedImageUrl(imageUrl: string) {
+export function getAiOptimizedImageUrl(imageUrl: string) {
   try {
     const url = new URL(imageUrl);
     const uploadMarker = "/image/upload/";
@@ -95,12 +136,42 @@ export async function fetchImageAsDataUrl(imageUrl: string) {
   return dataUrl;
 }
 
+export async function getAiImageInput(imageUrl: string, provider: AiProvider) {
+  const optimizedUrl = getAiOptimizedImageUrl(imageUrl);
+
+  if (provider === "openai") {
+    return optimizedUrl;
+  }
+
+  return fetchImageAsDataUrl(optimizedUrl);
+}
+
+export function createAiImageContentPart(provider: AiProvider, imageInput: string): AiImageContentPart {
+  if (provider === "openai") {
+    return {
+      type: "image_url",
+      image_url: {
+        url: imageInput,
+        detail: "high",
+      },
+    };
+  }
+
+  return {
+    type: "image_url",
+    image_url: imageInput,
+  };
+}
+
 export function getAiAuthErrorMessage(error: unknown) {
   const status =
     typeof error === "object" && error !== null && "status" in error ? Number((error as { status?: unknown }).status) : 0;
 
   if (status === 401) {
-    return `AI provider unauthorized. Check OLLAMA_KEY in Netlify environment variables, remove surrounding quotes/spaces, and redeploy.`;
+    const config = getAiConfig();
+    const keyName = config.provider === "openai" ? "OPENAI_API_KEY" : "OLLAMA_KEY";
+
+    return `AI provider unauthorized. Check ${keyName} in Netlify environment variables, remove surrounding quotes/spaces, and redeploy.`;
   }
 
   return null;

@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-import { fetchImageAsDataUrl, getAiAuthErrorMessage, getAiClient, getAiConfig } from "@/lib/ai";
+import {
+  createAiImageContentPart,
+  getAiAuthErrorMessage,
+  getAiClient,
+  getAiConfig,
+  getAiImageInput,
+} from "@/lib/ai";
 import connectToDatabase from "@/lib/db";
 import CleanSession from "@/models/CleanSession";
 
@@ -64,9 +70,9 @@ export async function POST(request: Request) {
 
     const aiConfig = getAiConfig();
     const aiClient = getAiClient();
-    const [referenceImageDataUrl, liveImageDataUrl] = await Promise.all([
-      fetchImageAsDataUrl(task.referenceImageUrl),
-      fetchImageAsDataUrl(task.liveImageUrl),
+    const [referenceImageInput, liveImageInput] = await Promise.all([
+      getAiImageInput(task.referenceImageUrl, aiConfig.provider),
+      getAiImageInput(task.liveImageUrl, aiConfig.provider),
     ]);
     const completion = await aiClient.chat.completions.create({
       model: aiConfig.appealModel,
@@ -83,18 +89,20 @@ export async function POST(request: Request) {
               type: "text",
               text: `Appeal review for task: ${taskName}. Clean type: ${task.cleanType || "Not specified"}. First image is the reference. Second image is the live cleaner submission. Cleaner notes or reported issues: ${task.cleanerNotes || "None provided."}`,
             },
-            {
-              type: "image_url",
-              image_url: referenceImageDataUrl,
-            },
-            {
-              type: "image_url",
-              image_url: liveImageDataUrl,
-            },
+            createAiImageContentPart(aiConfig.provider, referenceImageInput),
+            createAiImageContentPart(aiConfig.provider, liveImageInput),
           ] as never,
         },
       ],
       temperature: 0,
+      ...(aiConfig.provider === "openai"
+        ? {
+            max_completion_tokens: 380,
+            response_format: {
+              type: "json_object" as const,
+            },
+          }
+        : {}),
     });
 
     const content = completion.choices[0]?.message?.content;

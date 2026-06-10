@@ -3,15 +3,21 @@ export const requiredServerEnvKeys = [
   "CLOUDINARY_CLOUD_NAME",
   "CLOUDINARY_API_KEY",
   "CLOUDINARY_API_SECRET",
-  "OLLAMA_KEY",
 ] as const;
 
-type RequiredServerEnvKey = (typeof requiredServerEnvKeys)[number];
+type RequiredServerEnvKey = (typeof requiredServerEnvKeys)[number] | "OPENAI_API_KEY" | "OLLAMA_KEY";
 type OptionalServerEnvKey =
+  | "AI_PROVIDER"
   | "AI_BASE_URL"
   | "AI_MODEL"
   | "AI_MODEL_BASE"
-  | "AI_MODEL_APPEAL";
+  | "AI_MODEL_APPEAL"
+  | "OPENAI_API_KEY"
+  | "OPENAI_MODEL_BASE"
+  | "OPENAI_MODEL_APPEAL"
+  | "OLLAMA_KEY"
+  | "OLLAMA_MODEL_BASE"
+  | "OLLAMA_MODEL_APPEAL";
 
 function normalizeEnvValue(value: string | undefined) {
   const trimmed = value?.trim();

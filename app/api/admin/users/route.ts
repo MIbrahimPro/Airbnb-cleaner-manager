@@ -20,9 +20,13 @@ function sanitizePassword(value: unknown) {
   return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 128) : "";
 }
 
-function canManageUsers(role: unknown) {
+function canViewUsers(role: unknown) {
   const normalized = sanitizeText(role, 20);
   return normalized === "ADMIN" || normalized === "MANAGER";
+}
+
+function isAdminRole(role: unknown) {
+  return sanitizeText(role, 20) === "ADMIN";
 }
 
 function serializeUser(user: {
@@ -45,7 +49,7 @@ export async function GET(request: Request) {
   try {
     const role = new URL(request.url).searchParams.get("role");
 
-    if (!canManageUsers(role)) {
+    if (!canViewUsers(role)) {
       return NextResponse.json({ ok: false, error: "Manager or admin access is required." }, { status: 403 });
     }
 
@@ -73,21 +77,20 @@ export async function POST(request: Request) {
     const body = await request.json();
     const actorRole = sanitizeText(body.role, 20);
 
-    if (!canManageUsers(actorRole)) {
-      return NextResponse.json({ ok: false, error: "Manager or admin access is required." }, { status: 403 });
+    if (!isAdminRole(actorRole)) {
+      return NextResponse.json({ ok: false, error: "Admin access is required." }, { status: 403 });
     }
 
     const name = sanitizeText(body.name);
     const email = sanitizeEmail(body.email);
     const password = sanitizePassword(body.password);
     const targetRole = sanitizeText(body.userRole, 20) as UserRole;
-    const allowedTargetRole = actorRole === "ADMIN" ? targetRole : "CLEANER";
 
     if (!name || !email || !password) {
       return NextResponse.json({ ok: false, error: "Name, email, and password are required." }, { status: 400 });
     }
 
-    if (!["CLEANER", "MANAGER", "ADMIN"].includes(allowedTargetRole)) {
+    if (!["CLEANER", "MANAGER", "ADMIN"].includes(targetRole)) {
       return NextResponse.json({ ok: false, error: "Invalid user role." }, { status: 400 });
     }
 
@@ -97,7 +100,7 @@ export async function POST(request: Request) {
       name,
       email,
       password: hashPassword(password),
-      role: allowedTargetRole,
+      role: targetRole,
       active: true,
     });
 

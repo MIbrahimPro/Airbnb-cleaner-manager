@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { NextResponse } from "next/server";
 import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
+import { validateImageUpload } from "@/lib/image-upload";
 import Property from "@/models/Property";
 
 export const runtime = "nodejs";
@@ -83,6 +84,14 @@ export async function POST(request: Request, context: RouteContext) {
 
     if (!referenceImageUrl && !(file instanceof File && file.size > 0)) {
       return NextResponse.json({ ok: false, error: "Reference image URL or upload is required." }, { status: 400 });
+    }
+
+    if (file instanceof File && file.size > 0) {
+      const fileError = validateImageUpload(file, "Reference image");
+
+      if (fileError) {
+        return NextResponse.json({ ok: false, error: fileError }, { status: 400 });
+      }
     }
 
     await connectToDatabase();
@@ -171,6 +180,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     task.taskName = taskName;
 
     if (file instanceof File && file.size > 0) {
+      const fileError = validateImageUpload(file, "Reference image");
+
+      if (fileError) {
+        return NextResponse.json({ ok: false, error: fileError }, { status: 400 });
+      }
+
       task.referenceImageUrl = await uploadReferenceImage(file, propertyId, taskName);
     } else if (referenceImageUrl) {
       task.referenceImageUrl = referenceImageUrl;

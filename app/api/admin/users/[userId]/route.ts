@@ -27,9 +27,8 @@ function sanitizePassword(value: unknown) {
   return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 128) : "";
 }
 
-function canManageUsers(role: unknown) {
-  const normalized = sanitizeText(role, 20);
-  return normalized === "ADMIN" || normalized === "MANAGER";
+function isAdminRole(role: unknown) {
+  return sanitizeText(role, 20) === "ADMIN";
 }
 
 function serializeUser(user: {
@@ -54,8 +53,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     const body = await request.json();
     const actorRole = sanitizeText(body.role, 20);
 
-    if (!canManageUsers(actorRole)) {
-      return NextResponse.json({ ok: false, error: "Manager or admin access is required." }, { status: 403 });
+    if (!isAdminRole(actorRole)) {
+      return NextResponse.json({ ok: false, error: "Admin access is required." }, { status: 403 });
     }
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -67,13 +66,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     const password = sanitizePassword(body.password);
     const active = typeof body.active === "boolean" ? body.active : true;
     const requestedRole = sanitizeText(body.userRole, 20) as UserRole;
-    const nextRole = actorRole === "ADMIN" ? requestedRole : "CLEANER";
 
     if (!name || !email) {
       return NextResponse.json({ ok: false, error: "Name and email are required." }, { status: 400 });
     }
 
-    if (!["CLEANER", "MANAGER", "ADMIN"].includes(nextRole)) {
+    if (!["CLEANER", "MANAGER", "ADMIN"].includes(requestedRole)) {
       return NextResponse.json({ ok: false, error: "Invalid user role." }, { status: 400 });
     }
 
@@ -85,13 +83,9 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ ok: false, error: "User not found." }, { status: 404 });
     }
 
-    if (actorRole === "MANAGER" && existing.role !== "CLEANER") {
-      return NextResponse.json({ ok: false, error: "Managers can only edit cleaners." }, { status: 403 });
-    }
-
     existing.name = name;
     existing.email = email;
-    existing.role = nextRole;
+    existing.role = requestedRole;
     existing.active = active;
 
     if (password) {
@@ -119,8 +113,8 @@ export async function DELETE(request: Request, context: RouteContext) {
     const body = await request.json();
     const actorRole = sanitizeText(body.role, 20);
 
-    if (!canManageUsers(actorRole)) {
-      return NextResponse.json({ ok: false, error: "Manager or admin access is required." }, { status: 403 });
+    if (!isAdminRole(actorRole)) {
+      return NextResponse.json({ ok: false, error: "Admin access is required." }, { status: 403 });
     }
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -133,10 +127,6 @@ export async function DELETE(request: Request, context: RouteContext) {
 
     if (!existing) {
       return NextResponse.json({ ok: false, error: "User not found." }, { status: 404 });
-    }
-
-    if (actorRole === "MANAGER" && existing.role !== "CLEANER") {
-      return NextResponse.json({ ok: false, error: "Managers can only deactivate cleaners." }, { status: 403 });
     }
 
     existing.active = false;

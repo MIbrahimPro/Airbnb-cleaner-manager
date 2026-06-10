@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCloudinary } from "@/lib/cloudinary";
 import connectToDatabase from "@/lib/db";
+import { validateImageUpload } from "@/lib/image-upload";
 import Property from "@/models/Property";
 
 export const runtime = "nodejs";
@@ -134,6 +135,14 @@ export async function POST(request: Request) {
 
     if (!name) {
       return NextResponse.json({ ok: false, error: "Property name is required." }, { status: 400 });
+    }
+
+    if (coverFile instanceof File && coverFile.size > 0) {
+      const fileError = validateImageUpload(coverFile, "Cover image");
+
+      if (fileError) {
+        return NextResponse.json({ ok: false, error: fileError }, { status: 400 });
+      }
     }
 
     const coverImage = coverFile instanceof File && coverFile.size > 0 ? await uploadCoverImage(coverFile, name) : "";

@@ -23,21 +23,34 @@ MONGODB_URI
 CLOUDINARY_CLOUD_NAME
 CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
-OLLAMA_KEY
-AI_BASE_URL=https://ollama.com/v1
-AI_MODEL_BASE=gemma3:4b
-AI_MODEL_APPEAL=llama3.2-vision
+AI_PROVIDER=openai
+OPENAI_API_KEY
+AI_MODEL_BASE=gpt-5.4-mini
+AI_MODEL_APPEAL=gpt-5.4
 ```
 
-This build is Ollama-only. OpenAI support can be added later when the real OpenAI key is ready.
+OpenAI is the primary provider. Ollama is still available as a fallback by setting:
+
+```text
+AI_PROVIDER=ollama
+OLLAMA_KEY
+AI_BASE_URL=https://ollama.com/v1
+OLLAMA_MODEL_BASE=gemma3:4b
+OLLAMA_MODEL_APPEAL=llama3.2-vision
+```
 
 ## Netlify Deployment Notes
 
-The Netlify build error `Missing required environment variable: OLLAMA_KEY` means the key was not configured in Netlify. Add it under:
+AI keys are validated at runtime when `/api/evaluate` or `/api/evaluate-appeal` is called, so a build can complete before AI routes are exercised. If live evaluation returns an authorization error, check the active provider key:
+
+- OpenAI mode: `OPENAI_API_KEY`
+- Ollama mode: `OLLAMA_KEY`
+
+Add variables under:
 
 `Site configuration -> Environment variables`
 
-The code now validates AI keys at runtime when `/api/evaluate` or `/api/evaluate-appeal` is called, so a build can complete even before AI routes are exercised. The deployed AI review still needs `OLLAMA_KEY`.
+Set them for Builds, Functions, and Runtime, then redeploy.
 
 ## Local Setup Procedure
 
@@ -126,12 +139,12 @@ Images sent:
 1. `referenceImageUrl`
 2. `liveImageUrl`
 
-The server fetches AI-optimized Cloudinary JPEG transforms (`f_jpg,q_auto:eco,w_1280,c_limit`) and converts them to `data:image/...;base64,...` before sending them to Ollama. Converted images are cached briefly while the serverless function is warm.
+OpenAI receives AI-optimized Cloudinary JPEG URLs directly (`f_jpg,q_auto:eco,w_1280,c_limit`). Ollama fallback still fetches those optimized URLs and converts them to `data:image/...;base64,...` because that provider path needs inline image data.
 
 Default model:
 
 ```text
-AI_MODEL_BASE=gemma3:4b
+AI_MODEL_BASE=gpt-5.4-mini
 ```
 
 ### Appeal Prompt
@@ -151,12 +164,12 @@ Images sent:
 1. `referenceImageUrl`
 2. `liveImageUrl`
 
-The server fetches AI-optimized Cloudinary JPEG transforms (`f_jpg,q_auto:eco,w_1280,c_limit`) and converts them to `data:image/...;base64,...` before sending them to Ollama. Converted images are cached briefly while the serverless function is warm.
+OpenAI receives AI-optimized Cloudinary JPEG URLs directly (`f_jpg,q_auto:eco,w_1280,c_limit`). Ollama fallback still fetches those optimized URLs and converts them to `data:image/...;base64,...` because that provider path needs inline image data.
 
 Default model:
 
 ```text
-AI_MODEL_APPEAL=llama3.2-vision
+AI_MODEL_APPEAL=gpt-5.4
 ```
 
 ## API Routes
